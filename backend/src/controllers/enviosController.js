@@ -5,7 +5,8 @@ const getAll = async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT e.*, 
-             a.nombre as almacen_nombre
+             a.nombre as almacen_nombre,
+             a.direccion_completa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       ORDER BY e.created_at DESC
@@ -25,8 +26,9 @@ const getById = async (req, res) => {
     
     // Obtener envío
     const envioResult = await pool.query(`
-      SELECT e.*, 
-             a.nombre as almacen_nombre
+      SELECT e.*,
+             a.nombre as almacen_nombre,
+             a.direccion_completa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       WHERE e.id = $1
@@ -179,7 +181,9 @@ const iniciarEnvio = async (req, res) => {
 
     // Obtener envío actualizado
     const result = await pool.query(`
-      SELECT e.*, a.nombre as almacen_nombre
+      SELECT e.*, 
+             a.nombre as almacen_nombre,
+             a.direccion_completa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       WHERE e.id = $1
@@ -241,9 +245,9 @@ const aceptarAsignacion = async (req, res) => {
       RETURNING *
     `, [id]);
 
-    // Actualizar asignacion_transportistas
+    // Actualizar envio_asignaciones
     await pool.query(`
-      UPDATE asignacion_transportistas
+      UPDATE envio_asignaciones
       SET fecha_aceptacion = CURRENT_TIMESTAMP
       WHERE envio_id = $1
     `, [id]);
@@ -274,7 +278,7 @@ const rechazarAsignacion = async (req, res) => {
     `, [id]);
 
     // Eliminar asignación
-    await pool.query('DELETE FROM asignacion_transportistas WHERE envio_id = $1', [id]);
+    await pool.query('DELETE FROM envio_asignaciones WHERE envio_id = $1', [id]);
 
     res.json({
       success: true,
@@ -291,20 +295,33 @@ const getByTransportista = async (req, res) => {
   try {
     const { transportistaId } = req.params;
 
+    console.log(`🔍 Buscando envíos para transportista ID: ${transportistaId}`);
+
     const result = await pool.query(`
-      SELECT e.*, a.nombre as almacen_nombre
+      SELECT e.id, e.codigo, e.estado, e.fecha_estimada_entrega, e.hora_estimada, 
+             e.total_cantidad, e.total_peso, e.total_precio, e.created_at,
+             a.nombre as almacen_nombre,
+             a.direccion_completa,
+             a.latitud,
+             a.longitud,
+             ea.transportista_id,
+             ea.vehiculo_id,
+             ea.fecha_asignacion,
+             v.placa as vehiculo_placa
       FROM envios e
+      INNER JOIN envio_asignaciones ea ON e.id = ea.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
-      INNER JOIN asignacion_transportistas at ON e.id = at.envio_id
-      WHERE at.transportista_id = $1
+      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
+      WHERE ea.transportista_id = $1
         AND e.estado IN ('asignado', 'aceptado', 'en_transito')
       ORDER BY e.created_at DESC
     `, [transportistaId]);
 
+    console.log(`✅ Encontrados ${result.rows.length} envíos para transportista ${transportistaId}`);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error al obtener envíos del transportista:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    console.error('❌ Error al obtener envíos del transportista:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
   }
 };
 

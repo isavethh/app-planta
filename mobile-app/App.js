@@ -15,6 +15,7 @@ import HistorialScreen from './src/screens/HistorialScreen';
 import QRScannerScreen from './src/screens/QRScannerScreen';
 import QRViewScreen from './src/screens/QRViewScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
+import MapaEnvioScreen from './src/screens/MapaEnvioScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -168,6 +169,11 @@ export default function App() {
                 <Stack.Screen 
                   name="Tracking" 
                   component={TrackingScreen}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen 
+                  name="MapaEnvio" 
+                  component={MapaEnvioScreen}
                   options={{ headerShown: false }}
                 />
               </>
