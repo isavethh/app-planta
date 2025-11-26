@@ -42,6 +42,14 @@ export default function EnvioDetalleScreen({ route, navigation }) {
       if (accionPendiente === 'iniciar') {
         // Usar el nuevo servicio iniciarEnvio que también inicia la simulación
         await envioService.iniciarEnvio(envioId);
+
+        // Intentar iniciar simulación automáticamente
+        try {
+          await envioService.simularMovimiento(envioId);
+        } catch (simError) {
+          console.warn('No se pudo iniciar la simulación automática:', simError?.message || simError);
+        }
+
         Alert.alert(
           'Éxito', 
           'Envío iniciado correctamente. La simulación del recorrido está activa y se puede ver en el sistema web.',
@@ -60,6 +68,22 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     } finally {
       setActionLoading(false);
       setAccionPendiente(null);
+    }
+  };
+
+  const handleSimularRuta = async () => {
+    try {
+      setActionLoading(true);
+      const resp = await envioService.simularMovimiento(envioId);
+
+      // Navegar al tracking para ver la simulación inmediatamente
+      Alert.alert('Simulación iniciada', 'Se generó una ruta de ejemplo. Abriendo seguimiento...');
+      navigation.navigate('Tracking', { envioId });
+    } catch (error) {
+      console.error('Error al simular ruta desde detalle:', error);
+      Alert.alert('Error', 'No se pudo generar la simulación. Verifica el backend.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -244,7 +268,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           Ver Código QR
         </Button>
 
-        {envio.estado_nombre === 'asignado' && (
+        {(envio.estado_nombre === 'asignado' || envio.estado_nombre === 'aceptado') && (
           <Button
             mode="contained"
             icon="play-circle"
@@ -282,6 +306,19 @@ export default function EnvioDetalleScreen({ route, navigation }) {
               {envio.estado_nombre === 'entregado' ? 'Envío Completado' : 'Envío Cancelado'}
             </Text>
           </View>
+        )}
+        {/* Botón adicional para simular ruta (útil para pruebas/demo) */}
+        {envio.estado_nombre !== 'entregado' && (
+          <Button
+            mode="outlined"
+            icon="routes"
+            onPress={handleSimularRuta}
+            style={[styles.actionButton, { marginTop: 8 }]}
+            loading={actionLoading}
+            disabled={actionLoading}
+          >
+            Simular Ruta (Demo)
+          </Button>
         )}
       </Surface>
 
