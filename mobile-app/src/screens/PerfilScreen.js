@@ -1,11 +1,41 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Card, Text, Button, Avatar, Divider, List } from 'react-native-paper';
+import { Card, Text, Button, Avatar, Divider, List, ActivityIndicator } from 'react-native-paper';
 import { AuthContext } from '../context/AuthContext';
+import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function PerfilScreen() {
   const { userInfo, signOut } = useContext(AuthContext);
+  const [stats, setStats] = useState({ total: 0, enTransito: 0, completados: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    cargarEstadisticas();
+  }, []);
+
+  const cargarEstadisticas = async () => {
+    try {
+      setLoading(true);
+      const envios = await envioService.getAll();
+      
+      // Filtrar por usuario
+      const misEnvios = envios.filter(e => 
+        (userInfo.almacen_id && e.almacen_destino_id == userInfo.almacen_id) ||
+        (userInfo.transportista_id && e.transportista_id == userInfo.transportista_id)
+      );
+
+      const total = misEnvios.length;
+      const enTransito = misEnvios.filter(e => e.estado === 'en_transito' || e.estado === 'asignado').length;
+      const completados = misEnvios.filter(e => e.estado === 'entregado').length;
+
+      setStats({ total, enTransito, completados });
+    } catch (error) {
+      console.error('Error al cargar estadísticas:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!userInfo) {
     return (
@@ -15,8 +45,8 @@ export default function PerfilScreen() {
     );
   }
 
-  const esAlmacen = userInfo.tipo === 'almacen';
-  const esTransportista = userInfo.tipo === 'transportista';
+  const esAlmacen = userInfo.rol_nombre === 'almacen';
+  const esTransportista = userInfo.rol_nombre === 'transportista';
 
   return (
     <ScrollView style={styles.container}>
@@ -108,25 +138,29 @@ export default function PerfilScreen() {
           left={(props) => <Icon name="chart-bar" {...props} size={24} color="#4CAF50" />}
         />
         <Card.Content>
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Icon name="package-variant" size={40} color="#4CAF50" />
-              <Text variant="headlineMedium" style={styles.statNumber}>-</Text>
-              <Text variant="bodySmall" style={styles.statLabel}>Envíos Totales</Text>
+          {loading ? (
+            <ActivityIndicator size="large" color="#4CAF50" style={{ marginVertical: 20 }} />
+          ) : (
+            <View style={styles.statsContainer}>
+              <View style={styles.statItem}>
+                <Icon name="package-variant" size={40} color="#4CAF50" />
+                <Text variant="headlineMedium" style={styles.statNumber}>{stats.total}</Text>
+                <Text variant="bodySmall" style={styles.statLabel}>Envíos Totales</Text>
+              </View>
+              <Divider style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Icon name="truck-fast" size={40} color="#2196F3" />
+                <Text variant="headlineMedium" style={styles.statNumber}>{stats.enTransito}</Text>
+                <Text variant="bodySmall" style={styles.statLabel}>En Tránsito</Text>
+              </View>
+              <Divider style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Icon name="check-circle" size={40} color="#4CAF50" />
+                <Text variant="headlineMedium" style={styles.statNumber}>{stats.completados}</Text>
+                <Text variant="bodySmall" style={styles.statLabel}>Completados</Text>
+              </View>
             </View>
-            <Divider style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Icon name="truck-fast" size={40} color="#2196F3" />
-              <Text variant="headlineMedium" style={styles.statNumber}>-</Text>
-              <Text variant="bodySmall" style={styles.statLabel}>En Tránsito</Text>
-            </View>
-            <Divider style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Icon name="check-circle" size={40} color="#4CAF50" />
-              <Text variant="headlineMedium" style={styles.statNumber}>-</Text>
-              <Text variant="bodySmall" style={styles.statLabel}>Completados</Text>
-            </View>
-          </View>
+          )}
         </Card.Content>
       </Card>
 

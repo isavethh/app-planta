@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Share, Alert, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, Share, Alert, Image, Linking } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Divider, Chip, DataTable } from 'react-native-paper';
 import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -62,6 +62,87 @@ export default function QRViewScreen({ route, navigation }) {
     } catch (error) {
       console.error('Error al compartir:', error);
     }
+  };
+
+  const confirmarEntrega = () => {
+    Alert.alert(
+      'Confirmar Recepción',
+      '¿Recibiste el pedido en buen estado?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel'
+        },
+        {
+          text: 'Sí, Todo Correcto',
+          onPress: async () => {
+            try {
+              await envioService.updateEstado(envioId, 'entregado');
+              Alert.alert('¡Perfecto!', 'Pedido confirmado como entregado');
+              cargarEnvio(); // Recargar para ver el estado actualizado
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo confirmar la entrega');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const reportarProblema = () => {
+    Alert.alert(
+      'Reportar Problema',
+      'Selecciona el tipo de problema:',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel'
+        },
+        {
+          text: 'Productos Dañados',
+          onPress: () => enviarReporte('Productos dañados')
+        },
+        {
+          text: 'Faltan Productos',
+          onPress: () => enviarReporte('Productos faltantes')
+        },
+        {
+          text: 'Cantidad Incorrecta',
+          onPress: () => enviarReporte('Cantidad incorrecta')
+        },
+        {
+          text: 'Otro Problema',
+          onPress: () => {
+            Alert.prompt(
+              'Describe el problema',
+              'Ingresa los detalles:',
+              (texto) => enviarReporte(texto)
+            );
+          }
+        }
+      ]
+    );
+  };
+
+  const enviarReporte = async (problema) => {
+    try {
+      // Aquí podrías guardar el reporte en la BD
+      Alert.alert(
+        '✅ Reporte Enviado',
+        `Se ha reportado: "${problema}"\n\nNos contactaremos contigo pronto.`
+      );
+    } catch (error) {
+      Alert.alert('Error', 'No se pudo enviar el reporte');
+    }
+  };
+
+  const verDocumentoCompleto = () => {
+    // URL del documento completo generado por Node.js
+    const documentoUrl = `http://192.168.0.129:3000/api/envios/${envioId}/documento`;
+    
+    Linking.openURL(documentoUrl).catch(err => {
+      Alert.alert('Error', 'No se pudo abrir el documento.\n\nAsegúrate que el backend esté corriendo.');
+    });
   };
 
   const getEstadoColor = (estado) => {
@@ -234,8 +315,8 @@ export default function QRViewScreen({ route, navigation }) {
                   <DataTable.Row key={index}>
                     <DataTable.Cell>{producto.producto_nombre || 'Producto'}</DataTable.Cell>
                     <DataTable.Cell numeric>{producto.cantidad}</DataTable.Cell>
-                    <DataTable.Cell numeric>{parseFloat(producto.peso_kg || 0).toFixed(2)}kg</DataTable.Cell>
-                    <DataTable.Cell numeric>${parseFloat(producto.total_precio || 0).toFixed(2)}</DataTable.Cell>
+                    <DataTable.Cell numeric>{parseFloat(producto.total_peso || producto.peso_unitario || 0).toFixed(2)}kg</DataTable.Cell>
+                    <DataTable.Cell numeric>${parseFloat(producto.total_precio || producto.precio_unitario || 0).toFixed(2)}</DataTable.Cell>
                   </DataTable.Row>
                 ))}
               </DataTable>
@@ -280,8 +361,98 @@ export default function QRViewScreen({ route, navigation }) {
           </Card>
         )}
 
+        {/* Acciones de entrega (solo si está en tránsito o entregado) */}
+        {(envio.estado === 'en_transito' || envio.estado === 'entregado') && (
+          <Card style={styles.card}>
+            <Card.Title 
+              title="Acciones de Entrega"
+              left={(props) => <Icon name="clipboard-check" {...props} size={24} color="#4CAF50" />}
+            />
+            <Card.Content>
+              {envio.estado === 'entregado' ? (
+                <View>
+                  <Text variant="bodyMedium" style={styles.entregadoText}>
+                    ✅ Pedido entregado el {envio.fecha_entrega ? new Date(envio.fecha_entrega).toLocaleDateString('es-ES') : 'N/A'}
+                  </Text>
+                  <Button
+                    mode="outlined"
+                    icon="alert-circle"
+                    onPress={() => reportarProblema()}
+                    style={[styles.actionButton, { marginTop: 10 }]}
+                    buttonColor="#FFF3E0"
+                    textColor="#F57C00"
+                  >
+                    Reportar un Problema
+                  </Button>
+                </View>
+              ) : (
+                <View>
+                  <Text variant="bodyMedium" style={{ marginBottom: 15, color: '#666' }}>
+                    El pedido está en camino. Una vez recibido:
+                  </Text>
+                  <Button
+                    mode="contained"
+                    icon="check-circle"
+                    onPress={() => confirmarEntrega()}
+                    style={styles.actionButton}
+                    buttonColor="#4CAF50"
+                  >
+                    Confirmar Recepción
+                  </Button>
+                  <Button
+                    mode="outlined"
+                    icon="alert"
+                    onPress={() => reportarProblema()}
+                    style={[styles.actionButton, { marginTop: 10 }]}
+                    buttonColor="#FFF"
+                    textColor="#F44336"
+                  >
+                    Reportar Problema
+                  </Button>
+                </View>
+              )}
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* Documento Completo */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.documentoBox}>
+              <Icon name="file-document" size={48} color="#2196F3" />
+              <View style={styles.documentoTextContainer}>
+                <Text variant="titleMedium" style={styles.documentoTitle}>
+                  Documento Oficial del Envío
+                </Text>
+                <Text variant="bodySmall" style={styles.documentoSubtitle}>
+                  Incluye timeline completo, firmas, transportista, vehículo y más
+                </Text>
+              </View>
+            </View>
+            <Button
+              mode="contained"
+              icon="file-download"
+              onPress={verDocumentoCompleto}
+              style={[styles.actionButton, { marginTop: 15, backgroundColor: '#2196F3' }]}
+            >
+              Ver/Descargar Documento Completo
+            </Button>
+          </Card.Content>
+        </Card>
+
         {/* Botones de acción */}
         <View style={styles.actionsContainer}>
+          {envio.estado === 'en_transito' && (
+            <Button
+              mode="contained"
+              icon="map-marker-path"
+              onPress={() => navigation.navigate('Tracking', { envioId: envio.id })}
+              style={[styles.actionButton, { backgroundColor: '#9C27B0' }]}
+            >
+              Ver Seguimiento en Tiempo Real
+            </Button>
+          )}
+
           <Button
             mode="contained"
             icon="share-variant"
@@ -439,5 +610,29 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     marginBottom: 10,
+  },
+  entregadoText: {
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  documentoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    padding: 15,
+    borderRadius: 8,
+  },
+  documentoTextContainer: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  documentoTitle: {
+    fontWeight: 'bold',
+    color: '#1976D2',
+    marginBottom: 5,
+  },
+  documentoSubtitle: {
+    color: '#1565C0',
   },
 });

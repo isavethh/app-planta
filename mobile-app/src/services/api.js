@@ -1,10 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // URL del backend - detecta automáticamente si es web o móvil
-const API_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:3000/api'  // Para web
-  : 'http://10.26.5.55:3000/api'; // Para móvil - cambiar por tu IP
+  : 'http://192.168.0.129:3000/api'; // IP de tu PC
 
 const api = axios.create({
   baseURL: API_URL,

@@ -1,24 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Alert, Linking } from 'react-native';
 import { Text, Button, ActivityIndicator, Surface } from 'react-native-paper';
-import { Camera } from 'expo-camera';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function QRScannerScreen({ navigation }) {
-  const [hasPermission, setHasPermission] = useState(null);
+  const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    requestCameraPermission();
+    if (!permission) {
+      requestPermission();
+    }
   }, []);
-
-  const requestCameraPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
-  };
 
   const handleBarCodeScanned = async ({ type, data }) => {
     if (scanned) return;
@@ -95,7 +91,7 @@ export default function QRScannerScreen({ navigation }) {
     }
   };
 
-  if (hasPermission === null) {
+  if (!permission) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" />
@@ -104,17 +100,17 @@ export default function QRScannerScreen({ navigation }) {
     );
   }
 
-  if (hasPermission === false) {
+  if (!permission.granted) {
     return (
       <View style={styles.container}>
         <Icon name="camera-off" size={64} color="#999" />
         <Text style={styles.text}>No se otorgó permiso para usar la cámara</Text>
         <Button 
           mode="contained" 
-          onPress={() => Linking.openSettings()}
+          onPress={requestPermission}
           style={styles.button}
         >
-          Ir a Configuración
+          Conceder permiso
         </Button>
         <Button 
           mode="outlined" 
@@ -129,12 +125,12 @@ export default function QRScannerScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Camera
+      <CameraView
         style={StyleSheet.absoluteFillObject}
-        type={Camera.Constants.Type.back}
-        onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
-        barCodeScannerSettings={{
-          barCodeTypes: [BarCodeScanner.Constants.BarCodeType.qr],
+        facing="back"
+        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+        barcodeScannerSettings={{
+          barcodeTypes: ['qr'],
         }}
       >
         <View style={styles.overlay}>
@@ -167,7 +163,7 @@ export default function QRScannerScreen({ navigation }) {
             </Button>
           </View>
         </View>
-      </Camera>
+      </CameraView>
     </View>
   );
 }

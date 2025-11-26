@@ -14,6 +14,7 @@ import PerfilScreen from './src/screens/PerfilScreen';
 import HistorialScreen from './src/screens/HistorialScreen';
 import QRScannerScreen from './src/screens/QRScannerScreen';
 import QRViewScreen from './src/screens/QRViewScreen';
+import TrackingScreen from './src/screens/TrackingScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -162,6 +163,11 @@ export default function App() {
                 <Stack.Screen 
                   name="QRView" 
                   component={QRViewScreen}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen 
+                  name="Tracking" 
+                  component={TrackingScreen}
                   options={{ headerShown: false }}
                 />
               </>

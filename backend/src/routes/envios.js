@@ -1,12 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const enviosController = require('../controllers/enviosController');
+const documentoController = require('../controllers/documentoController');
 const { authenticateToken } = require('../middlewares/auth');
 
 // Rutas sin autenticación (para app simplificada)
 router.get('/', enviosController.getAll); // Permitir ver envíos sin auth (filtrar por usuario_id en query)
-router.get('/:id', enviosController.getById);
 router.get('/codigo/:codigo', enviosController.getByCode);
+router.get('/:id/documento', documentoController.generarDocumentoHTML); // Documento HTML completo (ANTES de /:id)
+router.get('/:id', enviosController.getById);
 
 // Sincronización desde Laravel (sin autenticación)
 router.post('/sync', async (req, res) => {

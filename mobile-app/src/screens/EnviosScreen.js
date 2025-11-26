@@ -100,50 +100,58 @@ export default function EnviosScreen({ navigation }) {
   const renderEnvio = ({ item }) => (
     <Card 
       style={styles.card}
-      onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+      onPress={() => navigation.navigate('QRView', { envioId: item.id })}
     >
       <Card.Content>
         <View style={styles.cardHeader}>
           <View style={styles.codigoContainer}>
-            <Text variant="titleMedium" style={styles.codigo}>{item.codigo}</Text>
-            <Chip 
-              icon={() => <Icon name={getEstadoIcon(item.estado)} size={14} color="white" />}
-              style={[styles.estadoChip, { backgroundColor: getEstadoColor(item.estado) }]}
-              textStyle={{ color: 'white', fontSize: 11 }}
-            >
-              {item.estado?.replace('_', ' ').toUpperCase()}
-            </Chip>
+            <Text variant="titleLarge" style={styles.codigo}>{item.codigo}</Text>
+            <View style={styles.estadoRow}>
+              <Icon name={getEstadoIcon(item.estado)} size={16} color={getEstadoColor(item.estado)} />
+              <Text style={[styles.estadoText, { color: getEstadoColor(item.estado) }]}>
+                {item.estado?.replace('_', ' ').toUpperCase()}
+              </Text>
+            </View>
           </View>
-          <Icon 
-            name="qrcode" 
-            size={32} 
-            color="#4CAF50" 
-            onPress={() => navigation.navigate('QRView', { envioId: item.id })}
-          />
+          <View style={styles.qrIconContainer}>
+            <Icon name="qrcode" size={40} color="#4CAF50" />
+          </View>
         </View>
 
+        <View style={styles.divider} />
+
         <View style={styles.infoRow}>
-          <Icon name="store" size={18} color="#666" />
+          <Icon name="warehouse" size={20} color="#4CAF50" />
           <Text style={styles.infoText}>{item.almacen_nombre || 'Sin almacén'}</Text>
         </View>
 
-        {item.fecha_creacion && (
-          <View style={styles.infoRow}>
-            <Icon name="calendar" size={18} color="#666" />
-            <Text style={styles.infoText}>
-              {new Date(item.fecha_creacion).toLocaleDateString('es-ES')}
-            </Text>
-          </View>
-        )}
+        <View style={styles.infoRow}>
+          <Icon name="calendar" size={20} color="#666" />
+          <Text style={styles.infoText}>
+            {new Date(item.fecha_creacion).toLocaleDateString('es-ES', { 
+              day: '2-digit', 
+              month: 'short', 
+              year: 'numeric' 
+            })}
+          </Text>
+        </View>
 
-        {item.total_precio && (
-          <View style={styles.infoRow}>
-            <Icon name="currency-usd" size={18} color="#666" />
-            <Text style={styles.infoText}>
-              Total: ${parseFloat(item.total_precio).toFixed(2)}
-            </Text>
+        <View style={styles.cardFooter}>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Icon name="package-variant" size={18} color="#666" />
+              <Text style={styles.statText}>{item.total_cantidad || 0}</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Icon name="weight-kilogram" size={18} color="#666" />
+              <Text style={styles.statText}>{parseFloat(item.total_peso || 0).toFixed(1)}kg</Text>
+            </View>
+            <View style={styles.precioContainer}>
+              <Text style={styles.precioLabel}>Total:</Text>
+              <Text style={styles.precioValue}>${parseFloat(item.total_precio || 0).toFixed(2)}</Text>
+            </View>
           </View>
-        )}
+        </View>
       </Card.Content>
     </Card>
   );
@@ -288,6 +296,64 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#4CAF50',
+  },
+  estadoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  estadoText: {
+    marginLeft: 6,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  qrIconContainer: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 10,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 12,
+  },
+  cardFooter: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statText: {
+    marginLeft: 5,
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+  },
+  precioContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  precioLabel: {
+    fontSize: 13,
+    color: '#2E7D32',
+    marginRight: 5,
+  },
+  precioValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2E7D32',
   },
 });
 
