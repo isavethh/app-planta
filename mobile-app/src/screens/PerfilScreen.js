@@ -1,0 +1,211 @@
+import React, { useContext } from 'react';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Card, Text, Button, Avatar, Divider, List } from 'react-native-paper';
+import { AuthContext } from '../context/AuthContext';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+export default function PerfilScreen() {
+  const { userInfo, signOut } = useContext(AuthContext);
+
+  if (!userInfo) {
+    return (
+      <View style={styles.container}>
+        <Text>No hay información de usuario</Text>
+      </View>
+    );
+  }
+
+  const esAlmacen = userInfo.tipo === 'almacen';
+  const esTransportista = userInfo.tipo === 'transportista';
+
+  return (
+    <ScrollView style={styles.container}>
+      {/* Header con avatar */}
+      <Card style={styles.headerCard}>
+        <Card.Content style={styles.headerContent}>
+          <Avatar.Icon 
+            size={80} 
+            icon={esAlmacen ? 'warehouse' : 'account-tie'} 
+            style={styles.avatar}
+          />
+          <Text variant="headlineSmall" style={styles.nombre}>
+            {userInfo.nombre}
+          </Text>
+          <Text variant="bodyMedium" style={styles.tipo}>
+            {esAlmacen ? 'Encargado de Almacén' : 'Transportista'}
+          </Text>
+        </Card.Content>
+      </Card>
+
+      {/* Información */}
+      <Card style={styles.card}>
+        <Card.Title 
+          title="Información Personal" 
+          left={(props) => <Icon name="account-details" {...props} size={24} color="#4CAF50" />}
+        />
+        <Card.Content>
+          {esAlmacen && (
+            <>
+              <List.Item
+                title="Almacén"
+                description={userInfo.nombre}
+                left={props => <List.Icon {...props} icon="warehouse" color="#4CAF50" />}
+              />
+              {userInfo.direccion && (
+                <List.Item
+                  title="Dirección"
+                  description={userInfo.direccion}
+                  left={props => <List.Icon {...props} icon="map-marker" color="#4CAF50" />}
+                />
+              )}
+              {userInfo.latitud && userInfo.longitud && (
+                <List.Item
+                  title="Coordenadas"
+                  description={`${userInfo.latitud}, ${userInfo.longitud}`}
+                  left={props => <List.Icon {...props} icon="crosshairs-gps" color="#4CAF50" />}
+                />
+              )}
+            </>
+          )}
+
+          {esTransportista && (
+            <>
+              <List.Item
+                title="Nombre"
+                description={userInfo.nombre}
+                left={props => <List.Icon {...props} icon="account" color="#4CAF50" />}
+              />
+              {userInfo.email && (
+                <List.Item
+                  title="Email"
+                  description={userInfo.email}
+                  left={props => <List.Icon {...props} icon="email" color="#4CAF50" />}
+                />
+              )}
+              {userInfo.telefono && (
+                <List.Item
+                  title="Teléfono"
+                  description={userInfo.telefono}
+                  left={props => <List.Icon {...props} icon="phone" color="#4CAF50" />}
+                />
+              )}
+              {userInfo.licencia && (
+                <List.Item
+                  title="Licencia"
+                  description={userInfo.licencia}
+                  left={props => <List.Icon {...props} icon="card-account-details" color="#4CAF50" />}
+                />
+              )}
+            </>
+          )}
+        </Card.Content>
+      </Card>
+
+      {/* Estadísticas */}
+      <Card style={styles.card}>
+        <Card.Title 
+          title="Estadísticas" 
+          left={(props) => <Icon name="chart-bar" {...props} size={24} color="#4CAF50" />}
+        />
+        <Card.Content>
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Icon name="package-variant" size={40} color="#4CAF50" />
+              <Text variant="headlineMedium" style={styles.statNumber}>-</Text>
+              <Text variant="bodySmall" style={styles.statLabel}>Envíos Totales</Text>
+            </View>
+            <Divider style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Icon name="truck-fast" size={40} color="#2196F3" />
+              <Text variant="headlineMedium" style={styles.statNumber}>-</Text>
+              <Text variant="bodySmall" style={styles.statLabel}>En Tránsito</Text>
+            </View>
+            <Divider style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Icon name="check-circle" size={40} color="#4CAF50" />
+              <Text variant="headlineMedium" style={styles.statNumber}>-</Text>
+              <Text variant="bodySmall" style={styles.statLabel}>Completados</Text>
+            </View>
+          </View>
+        </Card.Content>
+      </Card>
+
+      {/* Acciones */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Button
+            mode="contained"
+            onPress={signOut}
+            icon="logout"
+            style={styles.logoutButton}
+            buttonColor="#F44336"
+          >
+            Cerrar Sesión
+          </Button>
+        </Card.Content>
+      </Card>
+
+      <View style={{ height: 30 }} />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  headerCard: {
+    margin: 15,
+    borderRadius: 12,
+    elevation: 4,
+  },
+  headerContent: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  avatar: {
+    backgroundColor: '#4CAF50',
+    marginBottom: 15,
+  },
+  nombre: {
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    marginBottom: 5,
+  },
+  tipo: {
+    color: '#666',
+  },
+  card: {
+    margin: 15,
+    marginTop: 0,
+    borderRadius: 12,
+    elevation: 2,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statDivider: {
+    width: 1,
+    height: '100%',
+  },
+  statNumber: {
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    marginTop: 5,
+  },
+  statLabel: {
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 3,
+  },
+  logoutButton: {
+    marginTop: 10,
+  },
+});

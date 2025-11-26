@@ -1,0 +1,194 @@
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║       🎮 CÓMO USAR LA APP EN EMULADOR 🎮                ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+
+SE ABRIERON 2 VENTANAS:
+──────────────────────────────────────────────────────────────
+📦 Ventana 1: Backend (puerto 3000)
+📱 Ventana 2: Expo con opciones de emulador
+
+⚠️  NO CIERRES ESTAS VENTANAS
+
+
+═══════════════════════════════════════════════════════════════
+OPCIÓN 1: NAVEGADOR WEB (RECOMENDADO) 🌐
+═══════════════════════════════════════════════════════════════
+
+✅ MÁS FÁCIL Y RÁPIDO
+✅ NO NECESITAS INSTALAR NADA MÁS
+
+PASOS:
+──────
+1. Ve a la ventana de Expo (la segunda ventana que se abrió)
+
+2. Presiona la tecla:  w
+   (la letra w en tu teclado)
+
+3. Espera 10-20 segundos
+
+4. Se abrirá automáticamente en tu navegador
+
+5. Login con:
+   Email:    transportista@applanta.com
+   Password: admin123
+
+NOTA: La primera vez puede tardar en cargar. Ten paciencia.
+
+
+═══════════════════════════════════════════════════════════════
+OPCIÓN 2: EMULADOR DE ANDROID 🤖
+═══════════════════════════════════════════════════════════════
+
+⚠️  REQUIERE: Android Studio instalado
+
+PASOS:
+──────
+1. Abre Android Studio
+
+2. Ve a: Tools > AVD Manager
+
+3. Inicia un emulador (si no tienes, crea uno)
+
+4. Espera a que el emulador esté completamente iniciado
+
+5. Ve a la ventana de Expo
+
+6. Presiona la tecla:  a
+   (la letra a en tu teclado)
+
+7. Expo instalará automáticamente la app en el emulador
+
+8. Login con:
+   Email:    transportista@applanta.com
+   Password: admin123
+
+
+═══════════════════════════════════════════════════════════════
+OPCIÓN 3: FORZAR APERTURA EN WEB (SI 'w' NO FUNCIONA)
+═══════════════════════════════════════════════════════════════
+
+Abre una terminal nueva y ejecuta:
+
+cd C:\Users\Personal\Downloads\applanta\mobile-app
+npx expo start --web
+
+Esto abrirá directamente en el navegador.
+
+
+═══════════════════════════════════════════════════════════════
+🎯 MI RECOMENDACIÓN
+═══════════════════════════════════════════════════════════════
+
+USA LA OPCIÓN 1 (Navegador Web):
+- Es la más rápida
+- No necesitas configurar nada
+- Funciona inmediatamente
+
+Simplemente:
+1. Ve a la ventana de Expo
+2. Presiona: w
+3. Espera a que se abra en el navegador
+4. Login y listo
+
+
+═══════════════════════════════════════════════════════════════
+❓ SOLUCIÓN DE PROBLEMAS
+═══════════════════════════════════════════════════════════════
+
+Si la ventana de Expo no responde:
+──────────────────────────────────────
+1. Cierra la ventana de Expo
+2. Abre una terminal nueva
+3. Ejecuta:
+   cd C:\Users\Personal\Downloads\applanta\mobile-app
+   npx expo start --web
+
+
+Si ves error "Metro bundler failed":
+──────────────────────────────────────
+1. Cierra todo
+2. Ejecuta en terminal:
+   cd C:\Users\Personal\Downloads\applanta\mobile-app
+   npx expo start --clear --web
+
+
+Si el navegador se abre pero no carga:
+──────────────────────────────────────
+1. Verifica que el backend esté corriendo:
+   http://localhost:3000/health
+
+2. Espera 30 segundos más (puede tardar en compilar)
+
+3. Refresca el navegador (F5)
+
+
+═══════════════════════════════════════════════════════════════
+📱 QUÉ ESPERAR AL ABRIR LA APP
+═══════════════════════════════════════════════════════════════
+
+1. Primera pantalla: LOGIN
+   - Email: transportista@applanta.com
+   - Password: admin123
+
+2. Después del login: PANTALLA DE ENVÍOS
+   - Verás "Mis Envíos" en la parte superior
+   - Puede estar vacío (es normal, no hay envíos creados aún)
+   - Verás 3 pestañas abajo: Mis Envíos, Historial, Perfil
+
+3. Puedes navegar por:
+   - Mis Envíos (lista de envíos asignados)
+   - Historial (envíos completados)
+   - Perfil (tu información y configuración)
+
+
+═══════════════════════════════════════════════════════════════
+🔄 FLUJO COMPLETO DE PRUEBA
+═══════════════════════════════════════════════════════════════
+
+1. Login con transportista@applanta.com / admin123
+2. Verás la pantalla de "Mis Envíos" (probablemente vacía)
+3. Toca en "Perfil" (pestaña de abajo)
+4. Verás tu información: Carlos García
+5. Verás tu vehículo: ABC-123 (Toyota Hilux)
+6. Puedes cambiar tu disponibilidad con el switch
+
+Para crear un envío de prueba, necesitarías:
+- Usar Postman o similar
+- Hacer request al API del backend
+- Ver el archivo ESTA_CORRIENDO.md para los comandos
+
+
+═══════════════════════════════════════════════════════════════
+✅ VERIFICAR QUE TODO FUNCIONA
+═══════════════════════════════════════════════════════════════
+
+Backend:
+────────
+Abre en navegador: http://localhost:3000/health
+Debe mostrar: {"status":"ok","message":"Applanta API funcionando correctamente"}
+
+Expo/Metro:
+───────────
+Abre en navegador: http://localhost:8081
+Debe mostrar un JSON con la configuración
+
+App Web:
+────────
+Después de presionar 'w', debe abrir: http://localhost:19006
+(o similar)
+
+
+═══════════════════════════════════════════════════════════════
+🎉 ¡LISTO!
+═══════════════════════════════════════════════════════════════
+
+Ve a la ventana de Expo y presiona: w
+
+Espera a que se abra en el navegador
+
+Login: transportista@applanta.com / admin123
+
+¡Disfruta tu app! 🚚📦
+
