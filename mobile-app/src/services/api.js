@@ -130,6 +130,26 @@ export const envioService = {
     const response = await api.post(`/envios/${id}/iniciar`);
     return response.data;
   },
+
+  marcarEntregado: async (id) => {
+    const response = await api.post(`/envios/${id}/entregado`);
+    return response.data;
+  },
+
+  aceptarAsignacion: async (id) => {
+    const response = await api.post(`/envios/${id}/aceptar`);
+    return response.data;
+  },
+
+  rechazarAsignacion: async (id, motivo) => {
+    const response = await api.post(`/envios/${id}/rechazar`, { motivo });
+    return response.data;
+  },
+
+  getByTransportista: async (transportistaId) => {
+    const response = await api.get(`/envios/transportista/${transportistaId}`);
+    return response.data;
+  },
 };
 
 export default api;

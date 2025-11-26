@@ -198,8 +198,8 @@ const marcarEntregado = async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.query(`
-      UPDATE envios 
-      SET estado = 'entregado', 
+      UPDATE envios
+      SET estado = 'entregado',
           fecha_entrega = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
@@ -217,6 +217,97 @@ const marcarEntregado = async (req, res) => {
   }
 };
 
+// Aceptar asignación de envío (transportista acepta)
+const aceptarAsignacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar que el envío esté en estado 'asignado'
+    const envioCheck = await pool.query('SELECT estado FROM envios WHERE id = $1', [id]);
+    if (envioCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Envío no encontrado' });
+    }
+
+    if (envioCheck.rows[0].estado !== 'asignado') {
+      return res.status(400).json({ error: 'El envío no está en estado asignado' });
+    }
+
+    // Actualizar estado a 'aceptado'
+    const result = await pool.query(`
+      UPDATE envios
+      SET estado = 'aceptado',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+
+    // Actualizar asignacion_transportistas
+    await pool.query(`
+      UPDATE asignacion_transportistas
+      SET fecha_aceptacion = CURRENT_TIMESTAMP
+      WHERE envio_id = $1
+    `, [id]);
+
+    res.json({
+      success: true,
+      message: 'Envío aceptado correctamente',
+      envio: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error al aceptar asignación:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+// Rechazar asignación (transportista rechaza)
+const rechazarAsignacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    // Actualizar estado a 'pendiente' para que pueda reasignarse
+    await pool.query(`
+      UPDATE envios
+      SET estado = 'pendiente',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [id]);
+
+    // Eliminar asignación
+    await pool.query('DELETE FROM asignacion_transportistas WHERE envio_id = $1', [id]);
+
+    res.json({
+      success: true,
+      message: 'Asignación rechazada. El envío volverá a estar disponible para asignación.'
+    });
+  } catch (error) {
+    console.error('Error al rechazar asignación:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+// Obtener envíos por transportista
+const getByTransportista = async (req, res) => {
+  try {
+    const { transportistaId } = req.params;
+
+    const result = await pool.query(`
+      SELECT e.*, a.nombre as almacen_nombre
+      FROM envios e
+      LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
+      INNER JOIN asignacion_transportistas at ON e.id = at.envio_id
+      WHERE at.transportista_id = $1
+        AND e.estado IN ('asignado', 'aceptado', 'en_transito')
+      ORDER BY e.created_at DESC
+    `, [transportistaId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener envíos del transportista:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   getAll,
   getById,
@@ -225,6 +316,9 @@ module.exports = {
   getSeguimiento,
   getEstados,
   iniciarEnvio,
-  marcarEntregado
+  marcarEntregado,
+  aceptarAsignacion,
+  rechazarAsignacion,
+  getByTransportista
 };
 

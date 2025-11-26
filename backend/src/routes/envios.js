@@ -7,8 +7,13 @@ const { authenticateToken } = require('../middlewares/auth');
 // Rutas sin autenticación (para app simplificada)
 router.get('/', enviosController.getAll); // Permitir ver envíos sin auth (filtrar por usuario_id en query)
 router.get('/codigo/:codigo', enviosController.getByCode);
+router.get('/transportista/:transportistaId', enviosController.getByTransportista); // Envíos del transportista
 router.get('/:id/documento', documentoController.generarDocumentoHTML); // Documento HTML completo (ANTES de /:id)
 router.get('/:id', enviosController.getById);
+
+// Acciones del transportista (aceptar/rechazar asignación)
+router.post('/:id/aceptar', enviosController.aceptarAsignacion);
+router.post('/:id/rechazar', enviosController.rechazarAsignacion);
 
 // Sincronización desde Laravel (sin autenticación)
 router.post('/sync', async (req, res) => {
