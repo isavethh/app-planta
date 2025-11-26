@@ -28,18 +28,36 @@ export default function LoginScreen() {
       
       if (tipoUsuario === 'almacen') {
         const response = await authService.getAlmacenesLogin();
-        if (response.success) {
+        if (response.success && response.data) {
           setAlmacenes(response.data);
+          if (response.data.length === 0) {
+            Alert.alert('Sin Almacenes', 'No hay almacenes disponibles en el sistema.');
+          }
+        } else {
+          Alert.alert('Error', response.error || 'No se pudieron cargar los almacenes.');
+          setAlmacenes([]);
         }
       } else {
         const response = await authService.getTransportistas();
-        if (response.success) {
+        if (response.success && response.data) {
           setTransportistas(response.data);
+          if (response.data.length === 0) {
+            Alert.alert('Sin Transportistas', 'No hay transportistas disponibles en el sistema.');
+          }
+        } else {
+          Alert.alert('Error', response.error || 'No se pudieron cargar los transportistas.');
+          setTransportistas([]);
         }
       }
     } catch (error) {
       console.error('Error al cargar datos:', error);
-      Alert.alert('Error de Conexión', 'No se pudieron cargar los datos.\n\nVerifica que el backend esté corriendo.');
+      const mensaje = error?.response?.data?.error || error.message || 'Error desconocido';
+      Alert.alert('Error de Conexión', `No se pudieron cargar los datos.\n\n${mensaje}\n\nVerifica que el backend esté corriendo.`);
+      if (tipoUsuario === 'almacen') {
+        setAlmacenes([]);
+      } else {
+        setTransportistas([]);
+      }
     } finally {
       setLoadingData(false);
     }

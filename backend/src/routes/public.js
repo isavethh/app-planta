@@ -35,7 +35,12 @@ router.get('/almacenes-login', async (req, res) => {
 router.get('/transportistas-login', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.name as nombre, u.email, u.telefono, u.licencia
+      SELECT 
+        u.id, 
+        u.name as nombre, 
+        u.email, 
+        u.telefono,
+        NULL as licencia
       FROM users u
       WHERE u.tipo = 'transportista'
       ORDER BY u.name
@@ -49,7 +54,7 @@ router.get('/transportistas-login', async (req, res) => {
     console.error('Error al obtener transportistas:', error);
     res.status(500).json({ 
       success: false,
-      error: 'Error al obtener transportistas' 
+      error: 'Error al obtener transportistas: ' + error.message 
     });
   }
 });
@@ -120,9 +125,13 @@ router.post('/login-transportista', async (req, res) => {
     }
 
     const result = await pool.query(`
-      SELECT id, name as nombre, email, telefono, licencia
-      FROM users
-      WHERE id = $1 AND tipo = 'transportista'
+      SELECT 
+        u.id, 
+        u.name as nombre, 
+        u.email, 
+        u.telefono
+      FROM users u
+      WHERE u.id = $1 AND u.tipo = 'transportista'
     `, [transportista_id]);
 
     if (result.rows.length === 0) {
@@ -142,7 +151,7 @@ router.post('/login-transportista', async (req, res) => {
           nombre: transportista.nombre,
           email: transportista.email,
           telefono: transportista.telefono,
-          licencia: transportista.licencia,
+          licencia: null,
           tipo: 'transportista'
         },
         token: 'transportista-token-' + transportista.id
@@ -152,7 +161,7 @@ router.post('/login-transportista', async (req, res) => {
     console.error('Error en login transportista:', error);
     res.status(500).json({ 
       success: false,
-      error: 'Error en login' 
+      error: 'Error en login: ' + error.message 
     });
   }
 });

@@ -28,7 +28,9 @@ const getById = async (req, res) => {
     const envioResult = await pool.query(`
       SELECT e.*,
              a.nombre as almacen_nombre,
-             a.direccion_completa
+             a.direccion_completa,
+             a.latitud,
+             a.longitud
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       WHERE e.id = $1
@@ -137,15 +139,103 @@ const getSeguimiento = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await pool.query(`
-      SELECT * FROM seguimiento_envio
-      WHERE envio_id = $1
-      ORDER BY fecha_hora DESC
-    `, [id]);
+    try {
+      const result = await pool.query(`
+        SELECT * FROM seguimiento_envio
+        WHERE envio_id = $1
+        ORDER BY timestamp DESC
+      `, [id]);
 
-    res.json(result.rows);
+      return res.json(result.rows);
+    } catch (dbError) {
+      // Si la tabla de seguimiento aún no existe, devolvemos una lista vacía
+      if (dbError.code === '42P01') {
+        console.warn('Tabla seguimiento_envio no existe, devolviendo lista vacía');
+        return res.json([]);
+      }
+      throw dbError;
+    }
   } catch (error) {
     console.error('Error al obtener seguimiento:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+// Simular movimiento en tiempo real (para pruebas de tracking)
+const simularMovimiento = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Obtener envío con coordenadas de origen (planta) y destino (almacén)
+    const envioResult = await pool.query(`
+      SELECT e.*,
+             p.latitud  AS origen_lat,
+             p.longitud AS origen_lng,
+             COALESCE(a.latitud, d.latitud)   AS destino_lat,
+             COALESCE(a.longitud, d.longitud) AS destino_lng
+      FROM envios e
+      CROSS JOIN planta p
+      LEFT JOIN almacenes  a ON e.almacen_destino_id = a.id
+      LEFT JOIN direcciones d ON a.direccion_id = d.id
+      WHERE e.id = $1
+    `, [id]);
+
+    if (envioResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Envío no encontrado' });
+    }
+
+    const envio = envioResult.rows[0];
+
+    if (!envio.origen_lat || !envio.origen_lng || !envio.destino_lat || !envio.destino_lng) {
+      console.warn('⚠️ Faltan coordenadas completas para simular ruta, usando valores por defecto');
+      // Valores por defecto (Santa Cruz) para no romper la simulación
+      envio.origen_lat = envio.origen_lat  || -17.7833;
+      envio.origen_lng = envio.origen_lng  || -63.1821;
+      envio.destino_lat = envio.destino_lat || -17.7892;
+      envio.destino_lng = envio.destino_lng || -63.1751;
+    }
+
+    // Actualizar estado a en_transito si aún no lo está
+    await pool.query(
+      'UPDATE envios SET estado = $1, fecha_inicio_transito = COALESCE(fecha_inicio_transito, CURRENT_TIMESTAMP) WHERE id = $2',
+      ['en_transito', id]
+    );
+
+    // Simular puntos de ruta (10 puntos entre origen y destino)
+    const puntos = [];
+    const pasos = 10;
+
+    for (let i = 0; i <= pasos; i++) {
+      const lat = parseFloat(envio.origen_lat) +
+        (parseFloat(envio.destino_lat) - parseFloat(envio.origen_lat)) * (i / pasos);
+      const lng = parseFloat(envio.origen_lng) +
+        (parseFloat(envio.destino_lng) - parseFloat(envio.origen_lng)) * (i / pasos);
+      const velocidad = 30 + Math.random() * 20; // 30-50 km/h
+
+      puntos.push({ lat, lng, velocidad });
+    }
+
+    // Intentar guardar puntos en la base de datos (opcional)
+    try {
+      for (const punto of puntos) {
+        await pool.query(`
+          INSERT INTO seguimiento_envio (envio_id, latitud, longitud, velocidad)
+          VALUES ($1, $2, $3, $4)
+        `, [id, punto.lat, punto.lng, punto.velocidad]);
+      }
+    } catch (dbError) {
+      // Si la tabla no existe u otro error de BD, lo registramos pero NO rompemos la simulación
+      console.warn('No se pudieron guardar puntos de seguimiento en BD:', dbError.message);
+    }
+
+    return res.json({
+      message: 'Simulación de ruta creada correctamente',
+      puntos,
+      origen: { lat: envio.origen_lat, lng: envio.origen_lng },
+      destino: { lat: envio.destino_lat, lng: envio.destino_lng }
+    });
+  } catch (error) {
+    console.error('Error al simular movimiento:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
@@ -336,6 +426,7 @@ module.exports = {
   marcarEntregado,
   aceptarAsignacion,
   rechazarAsignacion,
-  getByTransportista
+  getByTransportista,
+  simularMovimiento
 };
 

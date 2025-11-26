@@ -280,12 +280,12 @@ export default function EnviosScreen({ navigation }) {
             {item.estado === 'aceptado' && (
               <Button 
                 mode="contained" 
-                onPress={() => handleIniciarRuta(item.id)}
-                icon="truck-fast"
+                onPress={() => navigation.navigate('MapaEnvio', { envioId: item.id })}
+                icon="map-marker-radius"
                 style={styles.actionButton}
-                buttonColor="#9C27B0"
+                buttonColor="#00BCD4"
               >
-                Iniciar Ruta
+                Ver Ubicación en Mapa
               </Button>
             )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Dimensions, Alert } from 'react-native';
+import { View, StyleSheet, Dimensions, Alert, Linking, Platform } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Chip } from 'react-native-paper';
 import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -27,6 +27,42 @@ export default function MapaEnvioScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const abrirEnMapa = () => {
+    if (!envio) return;
+
+    const lat = envio.latitud;
+    const lng = envio.longitud;
+    const nombre = encodeURIComponent(envio.almacen_nombre || 'Destino');
+
+    let url;
+
+    if (lat && lng) {
+      // Si tenemos coordenadas, construimos URL directa
+      if (Platform.OS === 'ios') {
+        url = `http://maps.apple.com/?ll=${lat},${lng}&q=${nombre}`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+      }
+    } else if (envio.direccion_completa) {
+      // Fallback: buscar por dirección de texto
+      const query = encodeURIComponent(envio.direccion_completa);
+      url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    } else {
+      Alert.alert(
+        'Mapa no disponible',
+        'Este envío no tiene configuradas coordenadas ni dirección completa para mostrar en mapa.'
+      );
+      return;
+    }
+
+    Linking.openURL(url).catch(() => {
+      Alert.alert(
+        'Error',
+        'No se pudo abrir la aplicación de mapas en este dispositivo.'
+      );
+    });
   };
 
   const handleIniciarViaje = async () => {
@@ -167,7 +203,7 @@ export default function MapaEnvioScreen({ route, navigation }) {
               {/* Placeholder para coordenadas */}
               <View style={styles.coordinatesBox}>
                 <Text variant="bodySmall" style={styles.coordinatesText}>
-                  🌍 Lat: -17.783333, Lng: -63.182778
+                  🌍 Lat: {envio.latitud || '-'} , Lng: {envio.longitud || '-'}
                 </Text>
                 <Text variant="bodySmall" style={styles.coordinatesSubtext}>
                   (Coordenadas aproximadas - Santa Cruz)
@@ -175,8 +211,18 @@ export default function MapaEnvioScreen({ route, navigation }) {
               </View>
 
               <Text variant="bodySmall" style={styles.mapNote}>
-                💡 Integración con Google Maps próximamente
+                💡 Puedes abrir la ubicación real en la app de mapas de tu celular.
               </Text>
+
+              <Button
+                mode="contained"
+                icon="map-marker"
+                style={styles.openMapButton}
+                buttonColor="#4CAF50"
+                onPress={abrirEnMapa}
+              >
+                Abrir en Google Maps
+              </Button>
             </View>
           </Card.Content>
         </Card>
@@ -366,6 +412,11 @@ const styles = StyleSheet.create({
     marginTop: 15,
     color: '#666',
     fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  openMapButton: {
+    marginTop: 20,
+    alignSelf: 'stretch',
   },
   productosCard: {
     marginHorizontal: 15,
@@ -426,4 +477,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 });
+
+
 

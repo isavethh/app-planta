@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Linking, Platform } from 'react-native';
 import { Card, Text, Button, Avatar, Divider, List, ActivityIndicator } from 'react-native-paper';
 import { AuthContext } from '../context/AuthContext';
 import { envioService } from '../services/api';
@@ -35,6 +35,40 @@ export default function PerfilScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const abrirDireccionEnMapa = () => {
+    if (!userInfo) return;
+
+    const lat = userInfo.latitud;
+    const lng = userInfo.longitud;
+    const nombre = encodeURIComponent(userInfo.nombre || 'Ubicación');
+
+    let url;
+
+    if (lat && lng) {
+      if (Platform.OS === 'ios') {
+        url = `http://maps.apple.com/?ll=${lat},${lng}&q=${nombre}`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+      }
+    } else if (userInfo.direccion) {
+      const query = encodeURIComponent(userInfo.direccion);
+      url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    } else {
+      Alert.alert(
+        'Mapa no disponible',
+        'No hay dirección configurada para este usuario.'
+      );
+      return;
+    }
+
+    Linking.openURL(url).catch(() => {
+      Alert.alert(
+        'Error',
+        'No se pudo abrir la aplicación de mapas en este dispositivo.'
+      );
+    });
   };
 
   if (!userInfo) {
@@ -86,6 +120,7 @@ export default function PerfilScreen() {
                   title="Dirección"
                   description={userInfo.direccion}
                   left={props => <List.Icon {...props} icon="map-marker" color="#4CAF50" />}
+                  onPress={abrirDireccionEnMapa}
                 />
               )}
               {userInfo.latitud && userInfo.longitud && (
@@ -93,6 +128,7 @@ export default function PerfilScreen() {
                   title="Coordenadas"
                   description={`${userInfo.latitud}, ${userInfo.longitud}`}
                   left={props => <List.Icon {...props} icon="crosshairs-gps" color="#4CAF50" />}
+                  onPress={abrirDireccionEnMapa}
                 />
               )}
             </>

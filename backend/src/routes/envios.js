@@ -90,5 +90,6 @@ router.get('/:id/seguimiento', enviosController.getSeguimiento);
 router.put('/:id/estado', enviosController.updateEstado);
 router.post('/:id/iniciar', enviosController.iniciarEnvio);
 router.post('/:id/entregar', enviosController.marcarEntregado);
+router.post('/:id/simular-movimiento', enviosController.simularMovimiento);
 
 module.exports = router;

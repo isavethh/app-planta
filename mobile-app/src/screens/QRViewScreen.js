@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Share, Alert, Image, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, Share, Alert, Image, Linking, Platform } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Divider, Chip, DataTable } from 'react-native-paper';
-import { envioService } from '../services/api';
+import { envioService, API_URL } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function QRViewScreen({ route, navigation }) {
@@ -36,6 +36,42 @@ export default function QRViewScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const verDireccionEnMapa = () => {
+    if (!envio) return;
+
+    const lat = envio.latitud;
+    const lng = envio.longitud;
+    const nombre = encodeURIComponent(envio.almacen_nombre || 'Destino');
+
+    let url;
+
+    if (lat && lng) {
+      // Si hay coordenadas del almacén, usamos eso
+      if (Platform.OS === 'ios') {
+        url = `http://maps.apple.com/?ll=${lat},${lng}&q=${nombre}`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+      }
+    } else if (envio.direccion_completa) {
+      // Fallback: dirección en texto
+      const query = encodeURIComponent(envio.direccion_completa);
+      url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    } else {
+      Alert.alert(
+        'Mapa no disponible',
+        'Este envío no tiene configurada una dirección o coordenadas para ver en mapa.'
+      );
+      return;
+    }
+
+    Linking.openURL(url).catch(() => {
+      Alert.alert(
+        'Error',
+        'No se pudo abrir la aplicación de mapas en este dispositivo.'
+      );
+    });
   };
 
   const compartirQR = async () => {
@@ -137,11 +173,14 @@ export default function QRViewScreen({ route, navigation }) {
   };
 
   const verDocumentoCompleto = () => {
-    // URL del documento completo generado por Node.js
-    const documentoUrl = `http://192.168.0.129:3000/api/envios/${envioId}/documento`;
-    
-    Linking.openURL(documentoUrl).catch(err => {
-      Alert.alert('Error', 'No se pudo abrir el documento.\n\nAsegúrate que el backend esté corriendo.');
+    // URL del documento completo generado por el backend (usa la misma base que el resto de la app)
+    const documentoUrl = `${API_URL}/envios/${envioId}/documento`;
+
+    Linking.openURL(documentoUrl).catch(() => {
+      Alert.alert(
+        'Error',
+        'No se pudo abrir el documento.\n\nVerifica que el backend esté corriendo y que tu celular/emulador esté en la misma red.'
+      );
     });
   };
 
@@ -415,6 +454,31 @@ export default function QRViewScreen({ route, navigation }) {
           </Card>
         )}
 
+        {/* Mapa / Dirección */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.documentoBox}>
+              <Icon name="map-marker" size={48} color="#4CAF50" />
+              <View style={styles.documentoTextContainer}>
+                <Text variant="titleMedium" style={styles.documentoTitle}>
+                  Dirección y Mapa del Envío
+                </Text>
+                <Text variant="bodySmall" style={styles.documentoSubtitle}>
+                  Abre la ubicación del almacén destino en la app de mapas de tu celular.
+                </Text>
+              </View>
+            </View>
+            <Button
+              mode="contained"
+              icon="map-marker-path"
+              onPress={verDireccionEnMapa}
+              style={[styles.actionButton, { marginTop: 15, backgroundColor: '#4CAF50' }]}
+            >
+              Ver Dirección en Mapa
+            </Button>
+          </Card.Content>
+        </Card>
+
         {/* Documento Completo */}
         <Card style={styles.card}>
           <Card.Content>
@@ -442,16 +506,14 @@ export default function QRViewScreen({ route, navigation }) {
 
         {/* Botones de acción */}
         <View style={styles.actionsContainer}>
-          {envio.estado === 'en_transito' && (
-            <Button
-              mode="contained"
-              icon="map-marker-path"
-              onPress={() => navigation.navigate('Tracking', { envioId: envio.id })}
-              style={[styles.actionButton, { backgroundColor: '#9C27B0' }]}
-            >
-              Ver Seguimiento en Tiempo Real
-            </Button>
-          )}
+          <Button
+            mode="contained"
+            icon="map-marker-path"
+            onPress={() => navigation.navigate('Tracking', { envioId: envio.id })}
+            style={[styles.actionButton, { backgroundColor: '#9C27B0' }]}
+          >
+            Ver Seguimiento en Tiempo Real
+          </Button>
 
           <Button
             mode="contained"
