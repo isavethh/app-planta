@@ -143,7 +143,7 @@ export const envioService = {
   },
 
   marcarEntregado: async (id) => {
-    const response = await api.post(`/envios/${id}/entregado`);
+    const response = await api.post(`/envios/${id}/entregar`);
     return response.data;
   },
 

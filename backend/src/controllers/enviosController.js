@@ -44,9 +44,9 @@ const getById = async (req, res) => {
     
     // Obtener productos del envío
     const productosResult = await pool.query(`
-      SELECT ep.*
-      FROM envio_productos ep
-      WHERE ep.envio_id = $1
+      SELECT *
+      FROM envio_productos
+      WHERE envio_id = $1
     `, [id]);
     
     envio.productos = productosResult.rows;
@@ -89,9 +89,9 @@ const getByCode = async (req, res) => {
     
     // Obtener productos
     const productosResult = await pool.query(`
-      SELECT ep.*
-      FROM envio_productos ep
-      WHERE ep.envio_id = $1
+      SELECT *
+      FROM envio_productos
+      WHERE envio_id = $1
     `, [envio.id]);
     
     envio.productos = productosResult.rows;
@@ -316,14 +316,29 @@ const aceptarAsignacion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar que el envío esté en estado 'asignado'
+    // Verificar que el envío existe y obtener su estado
     const envioCheck = await pool.query('SELECT estado FROM envios WHERE id = $1', [id]);
     if (envioCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Envío no encontrado' });
+      return res.status(404).json({ success: false, error: 'Envío no encontrado' });
     }
 
-    if (envioCheck.rows[0].estado !== 'asignado') {
-      return res.status(400).json({ error: 'El envío no está en estado asignado' });
+    const estadoActual = envioCheck.rows[0].estado;
+
+    // Si ya está aceptado, devolver mensaje apropiado
+    if (estadoActual === 'aceptado') {
+      return res.json({
+        success: true,
+        message: 'El envío ya fue aceptado anteriormente',
+        yaAceptado: true
+      });
+    }
+
+    // Solo permitir aceptar si está en estado 'asignado'
+    if (estadoActual !== 'asignado') {
+      return res.status(400).json({ 
+        success: false, 
+        error: `No se puede aceptar un envío en estado "${estadoActual}". Solo se pueden aceptar envíos asignados.` 
+      });
     }
 
     // Actualizar estado a 'aceptado'
@@ -335,7 +350,7 @@ const aceptarAsignacion = async (req, res) => {
       RETURNING *
     `, [id]);
 
-    // Actualizar envio_asignaciones
+    // Actualizar fecha_aceptacion en envio_asignaciones
     await pool.query(`
       UPDATE envio_asignaciones
       SET fecha_aceptacion = CURRENT_TIMESTAMP
@@ -349,7 +364,7 @@ const aceptarAsignacion = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al aceptar asignación:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    res.status(500).json({ success: false, error: 'Error interno del servidor', details: error.message });
   }
 };
 
@@ -358,6 +373,12 @@ const rechazarAsignacion = async (req, res) => {
   try {
     const { id } = req.params;
     const { motivo } = req.body;
+
+    // Verificar que el envío existe
+    const envioCheck = await pool.query('SELECT estado FROM envios WHERE id = $1', [id]);
+    if (envioCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Envío no encontrado' });
+    }
 
     // Actualizar estado a 'pendiente' para que pueda reasignarse
     await pool.query(`
@@ -372,11 +393,12 @@ const rechazarAsignacion = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Asignación rechazada. El envío volverá a estar disponible para asignación.'
+      message: 'Asignación rechazada. El envío volverá a estar disponible para asignación.',
+      motivo: motivo
     });
   } catch (error) {
     console.error('Error al rechazar asignación:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    res.status(500).json({ success: false, error: 'Error interno del servidor', details: error.message });
   }
 };
 
@@ -390,6 +412,7 @@ const getByTransportista = async (req, res) => {
     const result = await pool.query(`
       SELECT e.id, e.codigo, e.estado, e.fecha_estimada_entrega, e.hora_estimada, 
              e.total_cantidad, e.total_peso, e.total_precio, e.created_at,
+             e.categoria, e.observaciones,
              a.nombre as almacen_nombre,
              a.direccion_completa,
              a.latitud,
@@ -403,15 +426,16 @@ const getByTransportista = async (req, res) => {
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
       WHERE ea.transportista_id = $1
-        AND e.estado IN ('asignado', 'aceptado', 'en_transito')
+        AND e.estado IN ('pendiente', 'asignado', 'aceptado', 'en_transito')
       ORDER BY e.created_at DESC
     `, [transportistaId]);
 
     console.log(`✅ Encontrados ${result.rows.length} envíos para transportista ${transportistaId}`);
-    res.json(result.rows);
+    res.json({ success: true, data: result.rows });
   } catch (error) {
-    console.error('❌ Error al obtener envíos del transportista:', error.message);
-    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
+    console.error('❌ Error al obtener envíos del transportista:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ success: false, error: 'Error interno del servidor', details: error.message });
   }
 };
 

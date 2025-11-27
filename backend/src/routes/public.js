@@ -36,14 +36,15 @@ router.get('/transportistas-login', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        u.id, 
-        u.name as nombre, 
-        u.email, 
-        u.telefono,
-        NULL as licencia
-      FROM users u
-      WHERE u.tipo = 'transportista'
-      ORDER BY u.name
+        id,
+        name as nombre, 
+        email, 
+        telefono,
+        licencia,
+        disponible
+      FROM users
+      WHERE role = 'transportista' AND disponible = true
+      ORDER BY name
     `);
     
     res.json({
@@ -126,12 +127,14 @@ router.post('/login-transportista', async (req, res) => {
 
     const result = await pool.query(`
       SELECT 
-        u.id, 
-        u.name as nombre, 
-        u.email, 
-        u.telefono
-      FROM users u
-      WHERE u.id = $1 AND u.tipo = 'transportista'
+        id,
+        name as nombre, 
+        email, 
+        telefono,
+        licencia,
+        disponible
+      FROM users
+      WHERE id = $1 AND role = 'transportista'
     `, [transportista_id]);
 
     if (result.rows.length === 0) {
@@ -151,7 +154,8 @@ router.post('/login-transportista', async (req, res) => {
           nombre: transportista.nombre,
           email: transportista.email,
           telefono: transportista.telefono,
-          licencia: null,
+          licencia: transportista.licencia,
+          disponible: transportista.disponible,
           tipo: 'transportista'
         },
         token: 'transportista-token-' + transportista.id

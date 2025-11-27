@@ -296,27 +296,15 @@ export default function EnviosScreen({ navigation }) {
               </View>
             )}
 
-            {item.estado === 'aceptado' && (
+            {(item.estado === 'aceptado' || item.estado === 'en_transito') && (
               <Button 
                 mode="contained" 
-                onPress={() => navigation.navigate('MapaEnvio', { envioId: item.id })}
-                icon="map-marker-radius"
-                style={styles.actionButton}
-                buttonColor="#00BCD4"
-              >
-                Ver Ubicación en Mapa
-              </Button>
-            )}
-
-            {item.estado === 'en_transito' && (
-              <Button 
-                mode="outlined" 
                 onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
-                icon="map-marker-path"
+                icon="truck-fast"
                 style={styles.actionButton}
-                textColor="#9C27B0"
+                buttonColor="#9C27B0"
               >
-                Ver Seguimiento
+                Iniciar Simulación de Ruta
               </Button>
             )}
           </View>

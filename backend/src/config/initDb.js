@@ -222,12 +222,20 @@ const initDatabase = async () => {
         qr_code TEXT,
         direccion_destino_id INTEGER REFERENCES direcciones(id) ON DELETE SET NULL,
         almacen_destino_id INTEGER REFERENCES almacenes(id) ON DELETE SET NULL,
+        estado VARCHAR(50) DEFAULT 'pendiente',
         estado_id INTEGER REFERENCES estados_envio(id) ON DELETE SET NULL,
         fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         fecha_programada DATE,
+        fecha_estimada_entrega DATE,
         hora_estimada_llegada TIME,
+        hora_estimada TIME,
         fecha_entrega TIMESTAMP,
+        fecha_inicio_transito TIMESTAMP,
+        total_cantidad DECIMAL(10, 2) DEFAULT 0,
+        total_peso DECIMAL(10, 3) DEFAULT 0,
+        total_precio DECIMAL(12, 2) DEFAULT 0,
         notas TEXT,
+        observaciones TEXT,
         created_by INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -450,7 +458,7 @@ const initDatabase = async () => {
     // Almacén de ejemplo
     await client.query(`
       INSERT INTO almacenes (nombre, codigo, direccion_id, encargado_id, capacidad_maxima) VALUES
-      ('Almacén Principal', 'ALM-001', (SELECT id FROM direcciones WHERE nombre = 'Almacén Central'), (SELECT id FROM usuarios WHERE email = 'almacen@applanta.com'), 5000)
+      ('Almacén Principal', 'ALM-001', (SELECT id FROM direcciones WHERE nombre = 'Almacén Central' LIMIT 1), (SELECT id FROM usuarios WHERE email = 'almacen@applanta.com' LIMIT 1), 5000)
       ON CONFLICT (codigo) DO NOTHING
     `);
     console.log('Almacén insertado');
@@ -458,9 +466,9 @@ const initDatabase = async () => {
     // Vehículos de ejemplo
     await client.query(`
       INSERT INTO vehiculos (placa, marca, modelo, anio, tipo_vehiculo_id, color) VALUES
-      ('ABC-123', 'Toyota', 'Hilux', 2022, (SELECT id FROM tipos_vehiculo WHERE nombre = 'Camioneta'), 'Blanco'),
-      ('DEF-456', 'Hyundai', 'H100', 2021, (SELECT id FROM tipos_vehiculo WHERE nombre = 'Furgoneta'), 'Azul'),
-      ('GHI-789', 'Isuzu', 'NPR', 2020, (SELECT id FROM tipos_vehiculo WHERE nombre = 'Camión pequeño'), 'Rojo')
+      ('ABC-123', 'Toyota', 'Hilux', 2022, (SELECT id FROM tipos_vehiculo WHERE nombre = 'Camioneta' LIMIT 1), 'Blanco'),
+      ('DEF-456', 'Hyundai', 'H100', 2021, (SELECT id FROM tipos_vehiculo WHERE nombre = 'Furgoneta' LIMIT 1), 'Azul'),
+      ('GHI-789', 'Isuzu', 'NPR', 2020, (SELECT id FROM tipos_vehiculo WHERE nombre = 'Camión pequeño' LIMIT 1), 'Rojo')
       ON CONFLICT (placa) DO NOTHING
     `);
     console.log('Vehículos insertados');
@@ -468,7 +476,7 @@ const initDatabase = async () => {
     // Transportista de ejemplo
     await client.query(`
       INSERT INTO transportistas (usuario_id, licencia, tipo_licencia, fecha_vencimiento_licencia, vehiculo_asignado_id, disponible) VALUES
-      ((SELECT id FROM usuarios WHERE email = 'transportista@applanta.com'), 'LIC-12345', 'B', '2026-12-31', (SELECT id FROM vehiculos WHERE placa = 'ABC-123'), true)
+      ((SELECT id FROM usuarios WHERE email = 'transportista@applanta.com' LIMIT 1), 'LIC-12345', 'B', '2026-12-31', (SELECT id FROM vehiculos WHERE placa = 'ABC-123' LIMIT 1), true)
       ON CONFLICT DO NOTHING
     `);
     console.log('Transportista insertado');

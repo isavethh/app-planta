@@ -22,7 +22,7 @@ const generarDocumentoHTML = async (req, res) => {
     // Obtener productos
     const productosResult = await pool.query(`
       SELECT ep.*
-      FROM envio_productos ep
+      FROM detalle_envios ep
       WHERE ep.envio_id = $1
     `, [id]);
     
