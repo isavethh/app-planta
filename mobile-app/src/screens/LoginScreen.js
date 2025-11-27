@@ -85,6 +85,7 @@ export default function LoginScreen() {
         id: itemSeleccionado.id,
         nombre: itemSeleccionado.nombre,
         rol_nombre: tipoUsuario,
+        tipo: tipoUsuario, // IMPORTANTE: Agregar tipo para que funcione el filtrado
         almacen_id: tipoUsuario === 'almacen' ? itemSeleccionado.id : null,
         transportista_id: tipoUsuario === 'transportista' ? itemSeleccionado.id : null,
       };

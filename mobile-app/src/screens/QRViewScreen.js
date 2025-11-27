@@ -137,8 +137,8 @@ export default function QRViewScreen({ route, navigation }) {
   };
 
   const verDocumentoCompleto = () => {
-    // URL del documento completo generado por Node.js
-    const documentoUrl = `http://192.168.0.129:3000/api/envios/${envioId}/documento`;
+    // URL del documento completo generado por Laravel
+    const documentoUrl = `http://10.26.5.55:8000/api/envios/${envioId}/documento`;
     
     Linking.openURL(documentoUrl).catch(err => {
       Alert.alert('Error', 'No se pudo abrir el documento.\n\nAsegúrate que el backend esté corriendo.');
@@ -295,6 +295,73 @@ export default function QRViewScreen({ route, navigation }) {
           </Card.Content>
         </Card>
 
+        {/* Direcciones de Origen y Destino */}
+        <Card style={styles.card}>
+          <Card.Title 
+            title="Direcciones del Envío"
+            left={(props) => <Icon name="map-marker-multiple" {...props} size={24} color="#4CAF50" />}
+          />
+          <Card.Content>
+            {/* Dirección de Origen (Planta) */}
+            <View style={styles.direccionContainer}>
+              <View style={styles.direccionHeader}>
+                <Icon name="factory" size={24} color="#2196F3" />
+                <Text variant="titleSmall" style={styles.direccionTitulo}>Origen (Planta)</Text>
+              </View>
+              <Text variant="bodyMedium" style={styles.direccionTexto}>
+                {envio.origen_direccion || 'Planta Principal'}
+              </Text>
+              {envio.origen_lat && envio.origen_lng && (
+                <Text variant="bodySmall" style={styles.coordenadas}>
+                  📍 {envio.origen_lat}, {envio.origen_lng}
+                </Text>
+              )}
+              <Button
+                mode="outlined"
+                icon="map-marker"
+                onPress={() => {
+                  const url = `https://www.google.com/maps/search/?api=1&query=${envio.origen_lat || -17.7833},${envio.origen_lng || -63.1821}`;
+                  Linking.openURL(url);
+                }}
+                style={styles.mapButton}
+                compact
+              >
+                Ver en Mapa
+              </Button>
+            </View>
+
+            <Divider style={styles.direccionDivider} />
+
+            {/* Dirección de Destino (Almacén) */}
+            <View style={styles.direccionContainer}>
+              <View style={styles.direccionHeader}>
+                <Icon name="warehouse" size={24} color="#4CAF50" />
+                <Text variant="titleSmall" style={styles.direccionTitulo}>Destino (Almacén)</Text>
+              </View>
+              <Text variant="bodyMedium" style={styles.direccionTexto}>
+                {envio.direccion_completa || envio.almacen_nombre || 'Almacén de destino'}
+              </Text>
+              {envio.latitud && envio.longitud && (
+                <Text variant="bodySmall" style={styles.coordenadas}>
+                  📍 {envio.latitud}, {envio.longitud}
+                </Text>
+              )}
+              <Button
+                mode="outlined"
+                icon="map-marker"
+                onPress={() => {
+                  const url = `https://www.google.com/maps/search/?api=1&query=${envio.latitud || -17.7892},${envio.longitud || -63.1751}`;
+                  Linking.openURL(url);
+                }}
+                style={styles.mapButton}
+                compact
+              >
+                Ver en Mapa
+              </Button>
+            </View>
+          </Card.Content>
+        </Card>
+
         {/* Productos */}
         {envio.productos && envio.productos.length > 0 && (
           <Card style={styles.card}>
@@ -415,6 +482,77 @@ export default function QRViewScreen({ route, navigation }) {
           </Card>
         )}
 
+        {/* BOTÓN INICIAR RUTA - MUY VISIBLE */}
+        {(envio.estado === 'aceptado' || envio.estado === 'asignado') && (
+          <Card style={[styles.card, { backgroundColor: '#E8F5E9', borderWidth: 2, borderColor: '#4CAF50' }]}>
+            <Card.Content>
+              <View style={{ alignItems: 'center', paddingVertical: 10 }}>
+                <Icon name="map-marker-path" size={48} color="#4CAF50" />
+                <Text variant="titleLarge" style={{ color: '#4CAF50', fontWeight: 'bold', marginTop: 10 }}>
+                  ¿Listo para iniciar?
+                </Text>
+                <Text variant="bodyMedium" style={{ color: '#666', textAlign: 'center', marginTop: 5 }}>
+                  Inicia la ruta para activar el seguimiento en tiempo real
+                </Text>
+              </View>
+              <Button
+                mode="contained"
+                icon="play-circle"
+                onPress={async () => {
+                  Alert.alert(
+                    'Iniciar Ruta en Tiempo Real',
+                    '¿Deseas iniciar la ruta ahora? Se activará el seguimiento GPS y la simulación.',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Sí, Iniciar',
+                        onPress: async () => {
+                          try {
+                            await envioService.iniciarEnvio(envio.id);
+                            Alert.alert('✅ ¡Ruta Iniciada!', 'El seguimiento en tiempo real está activo.');
+                            cargarEnvio();
+                            navigation.navigate('Tracking', { envioId: envio.id });
+                          } catch (error) {
+                            console.error('Error al iniciar ruta:', error);
+                            Alert.alert('Error', 'No se pudo iniciar la ruta: ' + (error.response?.data?.error || error.message));
+                          }
+                        }
+                      }
+                    ]
+                  );
+                }}
+                style={[styles.actionButton, { backgroundColor: '#4CAF50', marginTop: 15 }]}
+                labelStyle={{ fontSize: 16, fontWeight: 'bold' }}
+              >
+                🚀 INICIAR RUTA EN TIEMPO REAL
+              </Button>
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* Botón para VER SEGUIMIENTO (solo si está en tránsito) */}
+        {envio.estado === 'en_transito' && (
+          <Card style={[styles.card, { backgroundColor: '#F3E5F5', borderWidth: 2, borderColor: '#9C27B0' }]}>
+            <Card.Content>
+              <View style={{ alignItems: 'center', paddingVertical: 10 }}>
+                <Icon name="truck-fast" size={48} color="#9C27B0" />
+                <Text variant="titleLarge" style={{ color: '#9C27B0', fontWeight: 'bold', marginTop: 10 }}>
+                  Envío en Tránsito
+                </Text>
+              </View>
+              <Button
+                mode="contained"
+                icon="map-marker-path"
+                onPress={() => navigation.navigate('Tracking', { envioId: envio.id })}
+                style={[styles.actionButton, { backgroundColor: '#9C27B0', marginTop: 15 }]}
+                labelStyle={{ fontSize: 16, fontWeight: 'bold' }}
+              >
+                Ver Seguimiento en Tiempo Real
+              </Button>
+            </Card.Content>
+          </Card>
+        )}
+
         {/* Documento Completo */}
         <Card style={styles.card}>
           <Card.Content>
@@ -425,7 +563,7 @@ export default function QRViewScreen({ route, navigation }) {
                   Documento Oficial del Envío
                 </Text>
                 <Text variant="bodySmall" style={styles.documentoSubtitle}>
-                  Incluye timeline completo, firmas, transportista, vehículo y más
+                  Incluye timeline completo, productos, transportista y más
                 </Text>
               </View>
             </View>
@@ -442,16 +580,6 @@ export default function QRViewScreen({ route, navigation }) {
 
         {/* Botones de acción */}
         <View style={styles.actionsContainer}>
-          {envio.estado === 'en_transito' && (
-            <Button
-              mode="contained"
-              icon="map-marker-path"
-              onPress={() => navigation.navigate('Tracking', { envioId: envio.id })}
-              style={[styles.actionButton, { backgroundColor: '#9C27B0' }]}
-            >
-              Ver Seguimiento en Tiempo Real
-            </Button>
-          )}
 
           <Button
             mode="contained"
@@ -569,6 +697,39 @@ const styles = StyleSheet.create({
   infoValue: {
     color: '#333',
     fontWeight: '500',
+  },
+  direccionContainer: {
+    marginVertical: 10,
+  },
+  direccionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  direccionTitulo: {
+    marginLeft: 8,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  direccionTexto: {
+    marginLeft: 32,
+    marginBottom: 5,
+    color: '#555',
+  },
+  coordenadas: {
+    marginLeft: 32,
+    color: '#888',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  mapButton: {
+    marginLeft: 32,
+    marginTop: 5,
+    alignSelf: 'flex-start',
+  },
+  direccionDivider: {
+    marginVertical: 15,
+    backgroundColor: '#E0E0E0',
   },
   divider: {
     marginVertical: 10,

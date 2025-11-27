@@ -2,10 +2,11 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// URL del backend - detecta automáticamente si es web o móvil
-const API_URL = Platform.OS === 'web' 
+// URL del backend - AHORA CONECTADO A LARAVEL (puerto 8000)
+// IMPORTANTE: Asegúrate de que Laravel esté corriendo con: php artisan serve --host=0.0.0.0 --port=8000
+export const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:3000/api'  // Para web
-  : 'http://10.90.49.140:3000/api'; // IP de tu PC
+  : 'http://10.26.5.55:3000/api'; // IP de tu PC en red local - LARAVEL (ACTUALIZADA)
 
 const api = axios.create({
   baseURL: API_URL,
@@ -72,17 +73,17 @@ export const publicService = {
 // Servicios de transportista
 export const transportistaService = {
   getById: async (id) => {
-    const response = await api.get(`/transportistas/${id}`);
+    const response = await api.get(`/transportista/${id}`);
     return response.data;
   },
 
   getEnviosAsignados: async (transportistaId) => {
-    const response = await api.get(`/transportistas/${transportistaId}/envios`);
+    const response = await api.get(`/transportista/${transportistaId}/envios`);
     return response.data;
   },
 
   cambiarDisponibilidad: async (transportistaId, disponible) => {
-    const response = await api.put(`/transportistas/${transportistaId}/disponibilidad`, { disponible });
+    const response = await api.put(`/transportista/${transportistaId}/disponibilidad`, { disponible });
     return response.data;
   },
 };
@@ -102,7 +103,7 @@ export const envioService = {
   },
 
   getByCode: async (codigo) => {
-    const response = await api.get(`/envios/codigo/${codigo}`);
+    const response = await api.get(`/envios/qr/${codigo}`);
     return response.data;
   },
 
@@ -128,6 +129,26 @@ export const envioService = {
 
   iniciarEnvio: async (id) => {
     const response = await api.post(`/envios/${id}/iniciar`);
+    return response.data;
+  },
+
+  aceptarEnvio: async (id) => {
+    const response = await api.post(`/envios/${id}/aceptar`);
+    return response.data;
+  },
+
+  rechazarEnvio: async (id) => {
+    const response = await api.post(`/envios/${id}/rechazar`);
+    return response.data;
+  },
+
+  marcarEntregado: async (id) => {
+    const response = await api.post(`/envios/${id}/entregado`);
+    return response.data;
+  },
+
+  getByTransportista: async (transportistaId) => {
+    const response = await api.get(`/transportista/${transportistaId}/envios`);
     return response.data;
   },
 };

@@ -41,11 +41,13 @@ app.use((err, req, res, next) => {
 
 // Iniciar servidor en todas las interfaces (0.0.0.0) para que sea accesible desde la red local
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor ejecutándose en puerto ${PORT}`);
+  console.log(`🚀 Servidor Node.js ejecutándose en puerto ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
-  console.log(`📱 Accesible desde red local en: http://10.90.49.140:${PORT}/api`);
+  console.log(`📱 Accesible desde red local en: http://10.26.5.55:${PORT}/api`);
   console.log(`   (Asegúrate de que tu celular esté en la misma red WiFi)`);
+  console.log(`\n⚠️  NOTA: La app móvil está configurada para usar Laravel en puerto 8000`);
+  console.log(`   Si necesitas usar este backend de Node.js, cambia la IP en api.js`);
 });
 
 module.exports = app;

@@ -20,21 +20,40 @@ export default function EnviosScreen({ navigation }) {
   const cargarEnvios = async () => {
     try {
       setLoading(true);
-      let data;
+      let data = [];
       
       if (esTransportista) {
         // Cargar envíos asignados al transportista
-        data = await envioService.getByTransportista(userInfo.id);
+        console.log('🔍 Cargando envíos para transportista ID:', userInfo.id);
+        try {
+          const response = await envioService.getByTransportista(userInfo.id);
+          console.log('✅ Respuesta del servidor:', response);
+          data = response.success ? response.data : (response.data || response);
+        } catch (apiError) {
+          console.error('❌ Error de API:', apiError.response?.status, apiError.response?.data);
+          // Si es 404 o no hay envíos, simplemente mostrar vacío
+          if (apiError.response?.status === 404 || apiError.response?.status === 500) {
+            data = [];
+          } else {
+            throw apiError;
+          }
+        }
       } else {
         // Cargar envíos del almacén
         data = await envioService.getAll(userInfo.id);
       }
       
-      setEnvios(data);
-      aplicarFiltros(data, filtroEstado, searchQuery);
+      // Asegurarse de que data sea un array
+      const enviosArray = Array.isArray(data) ? data : [];
+      console.log(`📦 Envíos cargados para transportista ${userInfo.id}:`, enviosArray.length);
+      
+      setEnvios(enviosArray);
+      aplicarFiltros(enviosArray, filtroEstado, searchQuery);
     } catch (error) {
-      console.error('Error al cargar envíos:', error);
-      Alert.alert('Error', 'No se pudieron cargar los envíos');
+      console.error('❌ Error al cargar envíos:', error);
+      // No mostrar alerta si simplemente no hay envíos
+      setEnvios([]);
+      setEnviosFiltrados([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,12 +104,12 @@ export default function EnviosScreen({ navigation }) {
           text: 'Aceptar',
           onPress: async () => {
             try {
-              await envioService.aceptarAsignacion(envioId);
-              Alert.alert('Éxito', 'Envío aceptado. Ya puedes iniciarlo.');
+              const response = await envioService.aceptarEnvio(envioId);
+              Alert.alert('✅ Éxito', 'Envío aceptado. Ya puedes ver la ruta y simulación.');
               cargarEnvios();
             } catch (error) {
               console.error('Error al aceptar:', error);
-              Alert.alert('Error', 'No se pudo aceptar el envío');
+              Alert.alert('Error', error.response?.data?.error || 'No se pudo aceptar el envío');
             }
           },
         },
@@ -109,12 +128,12 @@ export default function EnviosScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await envioService.rechazarAsignacion(envioId, 'No disponible');
-              Alert.alert('Rechazado', 'El envío fue rechazado.');
+              const response = await envioService.rechazarEnvio(envioId);
+              Alert.alert('✅ Rechazado', 'El envío fue rechazado y volverá a estar disponible.');
               cargarEnvios();
             } catch (error) {
               console.error('Error al rechazar:', error);
-              Alert.alert('Error', 'No se pudo rechazar el envío');
+              Alert.alert('Error', error.response?.data?.error || 'No se pudo rechazar el envío');
             }
           },
         },
@@ -360,12 +379,21 @@ export default function EnviosScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4CAF50']} />
         }
         ListEmptyComponent={
-          <View style={styles.centerContainer}>
-            <Icon name="inbox" size={60} color="#999" />
-            <Text style={styles.emptyText}>
-              {loading ? 'Cargando envíos...' : 'No hay envíos disponibles'}
-            </Text>
-          </View>
+          !loading && (
+            <View style={styles.centerContainer}>
+              <Icon name="inbox" size={64} color="#999" />
+              <Text style={styles.emptyText}>
+                {esTransportista 
+                  ? 'Por el momento no tienes envíos asignados' 
+                  : 'No hay envíos disponibles'}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {esTransportista 
+                  ? 'Los envíos aparecerán aquí cuando te los asignen' 
+                  : 'Crea un nuevo envío para comenzar'}
+              </Text>
+            </View>
+          )
         }
       />
 
