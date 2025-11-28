@@ -1,9 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, Dimensions, ScrollView, Linking } from 'react-native';
+import { View, StyleSheet, Alert, Dimensions, ScrollView, Linking, Platform, AppState } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Chip, ProgressBar, Divider } from 'react-native-paper';
 import { WebView } from 'react-native-webview';
 import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+// Componente para capturar errores
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('❌ Error capturado:', error, errorInfo);
+    Alert.alert('Error', `Se produjo un error: ${error.toString()}`);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Icon name="alert-circle" size={64} color="#F44336" />
+          <Text style={{ fontSize: 18, marginTop: 20, textAlign: 'center' }}>
+            Algo salió mal
+          </Text>
+          <Text style={{ marginTop: 10, textAlign: 'center', color: '#666' }}>
+            {this.state.error?.toString()}
+          </Text>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const { width } = Dimensions.get('window');
 
@@ -14,7 +49,7 @@ const PLANTA_COORDS = {
   nombre: 'Planta Central Applanta'
 };
 
-export default function TrackingScreen({ route, navigation }) {
+function TrackingScreenContent({ route, navigation }) {
   const { envioId } = route.params;
   const [envio, setEnvio] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,24 +58,56 @@ export default function TrackingScreen({ route, navigation }) {
   const [mensajeActual, setMensajeActual] = useState('');
   
   const intervaloRef = useRef(null);
+  const webViewRef = useRef(null);
+  const simulandoRef = useRef(false); // Ref para verificar en el intervalo
 
   useEffect(() => {
+    console.log('📱 TrackingScreen montado');
     cargarDatos();
-    return () => {
-      if (intervaloRef.current) {
-        clearInterval(intervaloRef.current);
+    
+    // Listener para detectar cuando la app va al background
+    const appStateSubscription = AppState.addEventListener('change', nextAppState => {
+      console.log('📱 AppState cambió a:', nextAppState);
+      
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        console.log('⚠️ App en background - pausando simulación');
+        if (intervaloRef.current && simulando) {
+          console.log('⏸️ Pausando intervalo temporalmente');
+          clearInterval(intervaloRef.current);
+          intervaloRef.current = null;
+        }
       }
+    });
+    
+    return () => {
+      console.log('📴 TrackingScreen desmontado - limpiando recursos');
+      if (intervaloRef.current) {
+        console.log('🛑 Deteniendo intervalo de simulación');
+        clearInterval(intervaloRef.current);
+        intervaloRef.current = null;
+      }
+      setSimulando(false);
+      simulandoRef.current = false;
+      appStateSubscription.remove();
     };
   }, []);
 
   const cargarDatos = async () => {
     try {
+      console.log('📥 Cargando datos del envío ID:', envioId);
       setLoading(true);
       const data = await envioService.getById(envioId);
+      console.log('✅ Datos del envío cargados:', {
+        codigo: data.codigo,
+        estado: data.estado,
+        almacen: data.almacen_nombre,
+        latitud: data.latitud,
+        longitud: data.longitud
+      });
       setEnvio(data);
     } catch (error) {
-      console.error('Error al cargar envío:', error);
-      Alert.alert('Error', 'No se pudo cargar el envío');
+      console.error('❌ Error al cargar envío:', error);
+      Alert.alert('Error', 'No se pudo cargar el envío: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -73,70 +140,235 @@ export default function TrackingScreen({ route, navigation }) {
   };
 
   const iniciarSimulacion = async () => {
-    if (!envio || simulando) return;
-
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🚀 INICIO DE SIMULACIÓN');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     try {
-      await envioService.iniciarEnvio(envioId);
+      console.log('✅ Paso 1: Verificando estado inicial');
+      console.log('   - envio:', envio ? 'OK' : 'NULL');
+      console.log('   - simulando:', simulando);
+      console.log('   - envioId:', envioId);
       
+      if (!envio) {
+        Alert.alert('Error', 'No hay datos del envío');
+        return;
+      }
+      
+      if (simulando) {
+        Alert.alert('Aviso', 'La simulación ya está en curso');
+        return;
+      }
+
+      console.log('✅ Paso 2: Llamando a API iniciarEnvio');
+      const respuesta = await envioService.iniciarEnvio(envioId);
+      console.log('   - Respuesta API:', respuesta);
+      
+      console.log('✅ Paso 3: Actualizando estados');
       setSimulando(true);
+      simulandoRef.current = true; // Actualizar la ref también
       setProgreso(0);
       setMensajeActual('🚚 Saliendo de la planta...');
+      
+      console.log('✅ Paso 4: Esperando WebView (500ms)');
+      await new Promise(resolve => setTimeout(resolve, 500));
 
+      console.log('✅ Paso 5: Configurando intervalo');
       const duracion = 30000;
-      const pasoIntervalo = 300;
+      const pasoIntervalo = 1000; // Aumentado de 300ms a 1000ms para evitar sobrecarga
       const pasosTotales = duracion / pasoIntervalo;
       let paso = 0;
+      let ultimoLogPaso = 0;
+      
+      console.log('   - Duración:', duracion, 'ms');
+      console.log('   - Intervalo:', pasoIntervalo, 'ms');
+      console.log('   - Pasos totales:', pasosTotales);
       
       intervaloRef.current = setInterval(() => {
-        paso++;
-        const nuevoProgreso = paso / pasosTotales;
-        
-        if (nuevoProgreso >= 1) {
+        try {
+          paso++;
+          const nuevoProgreso = paso / pasosTotales;
+          
+          // Log solo cada 5 pasos para no saturar
+          if (paso % 5 === 0 || paso !== ultimoLogPaso) {
+            console.log(`🔄 Progreso: ${(nuevoProgreso * 100).toFixed(1)}% (Paso ${paso}/${pasosTotales})`);
+            ultimoLogPaso = paso;
+          }
+          
+          if (nuevoProgreso >= 1) {
+            console.log('🏁 Simulación completada');
+            if (intervaloRef.current) {
+              clearInterval(intervaloRef.current);
+              intervaloRef.current = null;
+            }
+            try {
+              finalizarSimulacion();
+            } catch (finalError) {
+              console.error('❌ Error al llamar finalizarSimulacion:', finalError);
+              console.error('Stack:', finalError.stack);
+              Alert.alert('Error', 'Error al finalizar: ' + finalError.message);
+            }
+            return;
+          }
+          
+          // Verificar que aún estamos en estado de simulación (usar ref para evitar closure)
+          if (!simulandoRef.current) {
+            console.log('⚠️ Simulación cancelada, deteniendo intervalo');
+            if (intervaloRef.current) {
+              clearInterval(intervaloRef.current);
+              intervaloRef.current = null;
+            }
+            return;
+          }
+          
+          setProgreso(nuevoProgreso);
+          
+          // Actualizar posición del camión en el mapa
+          if (webViewRef.current) {
+            try {
+              // Verificar que el webView sigue montado
+              const mensaje = JSON.stringify({
+                type: 'updateProgress',
+                progress: nuevoProgreso
+              });
+              webViewRef.current.postMessage(mensaje);
+            } catch (webViewError) {
+              console.warn(`⚠️ Error al enviar mensaje al WebView (paso ${paso}):`, webViewError.message);
+              // Si hay muchos errores consecutivos, detener
+              if (paso > 5 && webViewError.message.includes('null')) {
+                console.error('❌ WebView parece estar destruido, deteniendo simulación');
+                if (intervaloRef.current) {
+                  clearInterval(intervaloRef.current);
+                  intervaloRef.current = null;
+                }
+                Alert.alert('Error', 'El mapa dejó de responder. Por favor, intenta de nuevo.');
+                setSimulando(false);
+                simulandoRef.current = false;
+                return;
+              }
+            }
+          } else {
+            console.warn(`⚠️ WebView no disponible en paso ${paso}`);
+          }
+          
+          if (nuevoProgreso < 0.3) {
+            setMensajeActual('🚚 Saliendo de la planta...');
+          } else if (nuevoProgreso < 0.7) {
+            setMensajeActual('🛣️ En camino al almacén...');
+          } else {
+            setMensajeActual('🎯 Llegando al destino...');
+          }
+        } catch (intervalError) {
+          console.error(`❌ Error crítico en intervalo (paso ${paso}):`, intervalError);
+          console.error('Stack:', intervalError.stack);
+          
+          // Detener la simulación si hay un error crítico
           if (intervaloRef.current) {
             clearInterval(intervaloRef.current);
             intervaloRef.current = null;
           }
-          finalizarSimulacion();
-          return;
-        }
-        
-        setProgreso(nuevoProgreso);
-        
-        if (nuevoProgreso < 0.3) {
-          setMensajeActual('🚚 Saliendo de la planta...');
-        } else if (nuevoProgreso < 0.7) {
-          setMensajeActual('🛣️ En camino al almacén...');
-        } else {
-          setMensajeActual('🎯 Llegando al destino...');
+          setSimulando(false);
+          simulandoRef.current = false;
+          
+          Alert.alert(
+            '❌ Error en Simulación', 
+            `Ocurrió un error en el paso ${paso}: ${intervalError.message}\n\nRevisa la consola para más detalles.`
+          );
         }
       }, pasoIntervalo);
       
+      console.log('✅ Simulación iniciada correctamente');
+      
     } catch (error) {
-      Alert.alert('Error', 'No se pudo iniciar la simulación');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('❌ ERROR EN SIMULACIÓN');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('Tipo:', error.name);
+      console.error('Mensaje:', error.message);
+      console.error('Stack:', error.stack);
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      Alert.alert(
+        '❌ Error al Iniciar Simulación', 
+        `${error.name}: ${error.message}\n\nRevisa la consola para más detalles.`,
+        [{ text: 'OK' }]
+      );
       setSimulando(false);
+      simulandoRef.current = false;
     }
   };
 
   const finalizarSimulacion = async () => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🏁 FINALIZANDO SIMULACIÓN');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     try {
-      await envioService.marcarEntregado(envioId);
+      console.log('✅ Paso 1: Deteniendo estados de simulación');
       setSimulando(false);
+      simulandoRef.current = false;
       setProgreso(1);
       
-      Alert.alert(
-        '🎉 ¡Envío Entregado!',
-        `Entrega completada en "${envio?.almacen_nombre}"\n\n✅ Estado: ENTREGADO`,
-        [{ 
-          text: 'Aceptar', 
-          onPress: () => {
-            cargarDatos();
-            navigation.goBack();
-          }
-        }]
-      );
+      console.log('✅ Paso 2: Moviendo camión a posición final');
+      // Mover el camión a la posición final
+      if (webViewRef.current) {
+        try {
+          webViewRef.current.postMessage(JSON.stringify({
+            type: 'updateProgress',
+            progress: 1
+          }));
+          console.log('✅ Mensaje enviado al WebView');
+        } catch (webViewError) {
+          console.warn('⚠️ Error al enviar mensaje final al WebView:', webViewError);
+        }
+      }
+      
+      console.log('✅ Paso 3: Llamando API marcarEntregado para envío ID:', envioId);
+      const resultado = await envioService.marcarEntregado(envioId);
+      console.log('✅ Respuesta de API marcarEntregado:', resultado);
+      
+      console.log('✅ Paso 4: Mostrando alerta de éxito');
+      
+      // Usar setTimeout para asegurar que la alerta se muestra después de que todo esté estable
+      setTimeout(() => {
+        Alert.alert(
+          '🎉 ¡Envío Entregado!',
+          `Entrega completada en "${envio?.almacen_nombre}"\n\n✅ Estado: ENTREGADO`,
+          [{ 
+            text: 'Aceptar', 
+            onPress: () => {
+              try {
+                console.log('✅ Usuario presionó Aceptar');
+                console.log('✅ Navegando hacia atrás...');
+                // No recargar datos aquí, la pantalla anterior se actualizará sola
+                navigation.goBack();
+                console.log('✅ Navegación completada');
+              } catch (navError) {
+                console.error('❌ Error al navegar:', navError);
+                console.error('Stack:', navError.stack);
+              }
+            }
+          }]
+        );
+        console.log('✅ Alerta mostrada correctamente');
+      }, 300);
+      
     } catch (error) {
-      Alert.alert('Error', 'No se pudo marcar como entregado');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('❌ ERROR AL FINALIZAR SIMULACIÓN');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('Tipo:', error.name);
+      console.error('Mensaje:', error.message);
+      console.error('Stack:', error.stack);
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      Alert.alert(
+        '❌ Error al Finalizar', 
+        `No se pudo marcar como entregado: ${error.message}\n\nRevisa la consola.`,
+        [{ text: 'OK' }]
+      );
       setSimulando(false);
+      simulandoRef.current = false;
     }
   };
 
@@ -176,7 +408,7 @@ export default function TrackingScreen({ route, navigation }) {
     longitude: parseFloat(envio.longitud) || -63.1751,
   };
 
-  // HTML para Google Maps con ruta real
+  // HTML para Google Maps con ruta real y camión animado
   const mapHtml = `
     <!DOCTYPE html>
     <html>
@@ -186,103 +418,202 @@ export default function TrackingScreen({ route, navigation }) {
         * { margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100vh; }
-        .marker { 
-          background: white; 
-          padding: 8px; 
-          border-radius: 20px; 
-          font-size: 12px; 
-          font-weight: bold;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
-        .marker.planta { color: #2196F3; border: 2px solid #2196F3; }
-        .marker.almacen { color: #4CAF50; border: 2px solid #4CAF50; }
       </style>
     </head>
     <body>
       <div id="map"></div>
       <script>
-        function initMap() {
-          const planta = { lat: ${PLANTA_COORDS.latitude}, lng: ${PLANTA_COORDS.longitude} };
-          const almacen = { lat: ${destino.latitude}, lng: ${destino.longitude} };
-          
-          const map = new google.maps.Map(document.getElementById('map'), {
-            zoom: 13,
-            center: planta,
-            mapTypeId: 'roadmap',
-            mapTypeControl: true,
-            streetViewControl: false,
-            fullscreenControl: false
-          });
-          
-          // Marcador Planta
-          new google.maps.Marker({
-            position: planta,
-            map: map,
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 15,
-              fillColor: '#2196F3',
-              fillOpacity: 1,
-              strokeColor: 'white',
-              strokeWeight: 3
-            },
-            label: {
-              text: '🏭',
-              fontSize: '20px'
-            },
-            title: 'Planta Central'
-          });
-          
-          // Marcador Almacén
-          new google.maps.Marker({
-            position: almacen,
-            map: map,
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 15,
-              fillColor: '#4CAF50',
-              fillOpacity: 1,
-              strokeColor: 'white',
-              strokeWeight: 3
-            },
-            label: {
-              text: '🎯',
-              fontSize: '20px'
-            },
-            title: '${envio.almacen_nombre}'
-          });
-          
-          // Servicio de direcciones para ruta REAL
-          const directionsService = new google.maps.DirectionsService();
-          const directionsRenderer = new google.maps.DirectionsRenderer({
-            map: map,
-            suppressMarkers: true,
-            polylineOptions: {
-              strokeColor: '#9C27B0',
-              strokeWeight: 6,
-              strokeOpacity: 0.8
-            }
-          });
-          
-          // Calcular ruta REAL
-          directionsService.route({
-            origin: planta,
-            destination: almacen,
-            travelMode: google.maps.TravelMode.DRIVING
-          }, (result, status) => {
-            if (status === 'OK') {
-              directionsRenderer.setDirections(result);
-            }
-          });
-          
-          // Ajustar vista para mostrar ambos puntos
-          const bounds = new google.maps.LatLngBounds();
-          bounds.extend(planta);
-          bounds.extend(almacen);
-          map.fitBounds(bounds);
+        // Función para enviar logs a React Native
+        function logToReactNative(message) {
+          try {
+            window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'log', message }));
+          } catch(e) {
+            console.log(message);
+          }
         }
+        
+        // Override console para capturar errores
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+          const errorMsg = 'Error: ' + msg + ' en ' + url + ':' + lineNo + ':' + columnNo;
+          logToReactNative(errorMsg);
+          return false;
+        };
+        
+        let map, truckMarker, routePath = [];
+        let isInitialized = false;
+        
+        function initMap() {
+          try {
+            logToReactNative('🗺️ Iniciando mapa...');
+            const planta = { lat: ${PLANTA_COORDS.latitude}, lng: ${PLANTA_COORDS.longitude} };
+            const almacen = { lat: ${destino.latitude}, lng: ${destino.longitude} };
+            logToReactNative('Coordenadas - Planta: ' + JSON.stringify(planta) + ', Almacén: ' + JSON.stringify(almacen));
+            
+            logToReactNative('Creando mapa...');
+            map = new google.maps.Map(document.getElementById('map'), {
+              zoom: 13,
+              center: planta,
+              mapTypeId: 'roadmap',
+              mapTypeControl: false,
+              streetViewControl: false,
+              fullscreenControl: false
+            });
+            logToReactNative('✅ Mapa creado');
+            
+            // Marcador Planta
+            logToReactNative('Agregando marcador Planta...');
+            new google.maps.Marker({
+              position: planta,
+              map: map,
+              label: '🏭',
+              title: 'Planta Central'
+            });
+            logToReactNative('✅ Marcador Planta agregado');
+            
+            // Marcador Almacén
+            logToReactNative('Agregando marcador Almacén...');
+            new google.maps.Marker({
+              position: almacen,
+              map: map,
+              label: '🎯',
+              title: '${envio.almacen_nombre || 'Destino'}'
+            });
+            logToReactNative('✅ Marcador Almacén agregado');
+            
+            // Marcador del Camión
+            logToReactNative('Agregando marcador Camión...');
+            truckMarker = new google.maps.Marker({
+              position: planta,
+              map: map,
+              label: '🚚',
+              title: 'Camión en tránsito',
+              zIndex: 1000
+            });
+            logToReactNative('✅ Marcador Camión agregado');
+            
+            // Ruta simple con línea
+            logToReactNative('Configurando Directions Service...');
+            const directionsService = new google.maps.DirectionsService();
+            const directionsRenderer = new google.maps.DirectionsRenderer({
+              map: map,
+              suppressMarkers: true,
+              polylineOptions: {
+                strokeColor: '#9C27B0',
+                strokeWeight: 4,
+                strokeOpacity: 0.7
+              }
+            });
+            logToReactNative('✅ Directions configurado');
+            
+            // Calcular ruta
+            logToReactNative('Calculando ruta...');
+            directionsService.route({
+              origin: planta,
+              destination: almacen,
+              travelMode: 'DRIVING'
+            }, function(result, status) {
+              logToReactNative('Respuesta de Directions: ' + status);
+              if (status === 'OK') {
+                try {
+                  directionsRenderer.setDirections(result);
+                  const route = result.routes[0];
+                  routePath = [];
+                  for (let i = 0; i < route.overview_path.length; i++) {
+                    routePath.push({
+                      lat: route.overview_path[i].lat(),
+                      lng: route.overview_path[i].lng()
+                    });
+                  }
+                  isInitialized = true;
+                  logToReactNative('✅ Ruta calculada con ' + routePath.length + ' puntos');
+                } catch (e) {
+                  logToReactNative('❌ Error procesando ruta: ' + e.message);
+                }
+              } else {
+                logToReactNative('❌ Error calculando ruta: ' + status);
+              }
+            });
+            
+            // Ajustar vista
+            logToReactNative('Ajustando vista del mapa...');
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(planta);
+            bounds.extend(almacen);
+            map.fitBounds(bounds);
+            logToReactNative('✅ Mapa inicializado completamente');
+            
+          } catch (error) {
+            const errorMsg = '❌ Error en initMap: ' + error.message;
+            logToReactNative(errorMsg);
+            document.getElementById('map').innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Error: ' + error.message + '</div>';
+          }
+        }
+        
+        // Actualizar posición del camión
+        let lastLoggedProgress = -1;
+        function updateTruck(progress) {
+          try {
+            if (!isInitialized) {
+              if (progress === 0) logToReactNative('⚠️ Mapa no inicializado aún');
+              return;
+            }
+            if (!truckMarker) {
+              if (progress === 0) logToReactNative('⚠️ Marcador de camión no existe');
+              return;
+            }
+            if (routePath.length === 0) {
+              if (progress === 0) logToReactNative('⚠️ Ruta vacía');
+              return;
+            }
+            
+            const index = Math.floor(progress * (routePath.length - 1));
+            if (routePath[index]) {
+              truckMarker.setPosition(routePath[index]);
+              
+              // Log solo cada 20% para no saturar
+              const progressPercent = Math.floor(progress * 100);
+              if (progressPercent % 20 === 0 && progressPercent !== lastLoggedProgress) {
+                logToReactNative('🚚 Camión al ' + progressPercent + '% (pos ' + index + '/' + routePath.length + ')');
+                lastLoggedProgress = progressPercent;
+              }
+            }
+          } catch (e) {
+            logToReactNative('❌ Error moviendo camión: ' + e.message);
+          }
+        }
+        
+        // Mensajes desde React Native
+        let messageCount = 0;
+        document.addEventListener('message', function(e) {
+          try {
+            const data = JSON.parse(e.data);
+            // Log solo el primer mensaje para confirmar que funciona
+            if (messageCount === 0) {
+              logToReactNative('📨 Primer mensaje recibido (document), listener funcionando');
+            }
+            messageCount++;
+            if (data.type === 'updateProgress') {
+              updateTruck(data.progress);
+            }
+          } catch(err) {
+            logToReactNative('❌ Error parseando mensaje (document): ' + err.message);
+          }
+        });
+        
+        window.addEventListener('message', function(e) {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === 'updateProgress') {
+              updateTruck(data.progress);
+            }
+          } catch(err) {
+            logToReactNative('❌ Error parseando mensaje (window): ' + err.message);
+          }
+        });
+        
+        logToReactNative('🎬 Script completamente cargado y listeners registrados');
       </script>
-      <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&callback=initMap" async defer></script>
+      <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAIwhMeAvxLiKqRu3KMtwN1iT1jJBtioG0&callback=initMap"></script>
     </body>
     </html>
   `;
@@ -367,11 +698,51 @@ export default function TrackingScreen({ route, navigation }) {
             
             <View style={styles.mapContainer}>
               <WebView
+                ref={webViewRef}
                 source={{ html: mapHtml }}
                 style={styles.webview}
                 javaScriptEnabled={true}
                 domStorageEnabled={true}
                 startInLoadingState={true}
+                androidHardwareAccelerationDisabled={false}
+                androidLayerType="hardware"
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('❌ Error en WebView:', nativeEvent);
+                  Alert.alert('Error en Mapa', `No se pudo cargar el mapa: ${nativeEvent.description}`);
+                }}
+                onRenderProcessGone={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('💥 WebView proceso terminado:', nativeEvent);
+                  Alert.alert(
+                    'El mapa dejó de funcionar',
+                    'El proceso del mapa se cerró inesperadamente. Esto puede ocurrir por falta de memoria.',
+                    [
+                      {
+                        text: 'Continuar sin mapa',
+                        onPress: () => {
+                          // Continuar la simulación sin el mapa
+                          console.log('Continuando sin WebView');
+                        }
+                      },
+                      {
+                        text: 'Volver',
+                        onPress: () => {
+                          if (intervaloRef.current) {
+                            clearInterval(intervaloRef.current);
+                          }
+                          navigation.goBack();
+                        }
+                      }
+                    ]
+                  );
+                }}
+                onLoadEnd={() => {
+                  console.log('✅ WebView cargado correctamente');
+                }}
+                onMessage={(event) => {
+                  console.log('📨 Mensaje desde WebView:', event.nativeEvent.data);
+                }}
                 renderLoading={() => (
                   <View style={styles.mapLoading}>
                     <ActivityIndicator size="large" color="#9C27B0" />
@@ -712,3 +1083,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
+// Exportar con ErrorBoundary
+export default function TrackingScreen(props) {
+  return (
+    <ErrorBoundary>
+      <TrackingScreenContent {...props} />
+    </ErrorBoundary>
+  );
+}

@@ -148,7 +148,7 @@ export const envioService = {
   },
 
   getByTransportista: async (transportistaId) => {
-    const response = await api.get(`/transportista/${transportistaId}/envios`);
+    const response = await api.get(`/envios/transportista/${transportistaId}`);
     return response.data;
   },
 };

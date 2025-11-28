@@ -6,16 +6,27 @@ const getAll = async (req, res) => {
     const result = await pool.query(`
       SELECT e.*, 
              a.nombre as almacen_nombre,
-             a.direccion_completa
+             a.direccion_completa,
+             ae.transportista_id,
+             ae.vehiculo_id,
+             ae.fecha_asignacion,
+             u.nombre as transportista_nombre,
+             u.apellido as transportista_apellido,
+             v.placa as vehiculo_placa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
+      LEFT JOIN asignaciones_envio ae ON e.id = ae.envio_id
+      LEFT JOIN transportistas t ON ae.transportista_id = t.id
+      LEFT JOIN usuarios u ON t.usuario_id = u.id
+      LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       ORDER BY e.created_at DESC
     `);
 
     res.json(result.rows);
   } catch (error) {
     console.error('Error al obtener envíos:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    console.error('Detalles del error:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
   }
 };
 
@@ -30,9 +41,19 @@ const getById = async (req, res) => {
              a.nombre as almacen_nombre,
              a.direccion_completa,
              a.latitud,
-             a.longitud
+             a.longitud,
+             ae.transportista_id,
+             ae.vehiculo_id,
+             ae.fecha_asignacion,
+             u.nombre as transportista_nombre,
+             u.apellido as transportista_apellido,
+             v.placa as vehiculo_placa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
+      LEFT JOIN asignaciones_envio ae ON e.id = ae.envio_id
+      LEFT JOIN transportistas t ON ae.transportista_id = t.id
+      LEFT JOIN usuarios u ON t.usuario_id = u.id
+      LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       WHERE e.id = $1
     `, [id]);
 
@@ -413,21 +434,27 @@ const getByTransportista = async (req, res) => {
       SELECT e.id, e.codigo, e.estado, e.fecha_estimada_entrega, e.hora_estimada, 
              e.total_cantidad, e.total_peso, e.total_precio, e.created_at,
              e.categoria, e.observaciones,
+             e.fecha_inicio_transito, e.fecha_entrega,
              a.nombre as almacen_nombre,
              a.direccion_completa,
              a.latitud,
              a.longitud,
-             ea.transportista_id,
-             ea.vehiculo_id,
-             ea.fecha_asignacion,
+             ae.transportista_id,
+             ae.vehiculo_id,
+             ae.fecha_asignacion,
              v.placa as vehiculo_placa
       FROM envios e
-      INNER JOIN envio_asignaciones ea ON e.id = ea.envio_id
+      INNER JOIN asignaciones_envio ae ON e.id = ae.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
-      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
-      WHERE ea.transportista_id = $1
-        AND e.estado IN ('pendiente', 'asignado', 'aceptado', 'en_transito')
-      ORDER BY e.created_at DESC
+      LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
+      WHERE ae.transportista_id = $1
+        AND e.estado IN ('pendiente', 'asignado', 'aceptado', 'en_transito', 'entregado')
+      ORDER BY 
+        CASE 
+          WHEN e.estado = 'entregado' THEN 1
+          ELSE 0
+        END ASC,
+        e.created_at DESC
     `, [transportistaId]);
 
     console.log(`✅ Encontrados ${result.rows.length} envíos para transportista ${transportistaId}`);

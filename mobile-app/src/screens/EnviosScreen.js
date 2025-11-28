@@ -200,6 +200,36 @@ export default function EnviosScreen({ navigation }) {
     return textos[estado] || estado;
   };
 
+  // Calcular duración del viaje
+  const calcularDuracionViaje = (fechaInicio, fechaEntrega) => {
+    if (!fechaInicio || !fechaEntrega) return null;
+    
+    try {
+      const inicio = new Date(fechaInicio);
+      const entrega = new Date(fechaEntrega);
+      const diferenciaMilisegundos = entrega - inicio;
+      
+      if (diferenciaMilisegundos < 0) return null;
+      
+      const minutos = Math.floor(diferenciaMilisegundos / 1000 / 60);
+      const horas = Math.floor(minutos / 60);
+      const dias = Math.floor(horas / 24);
+      
+      if (dias > 0) {
+        const horasRestantes = horas % 24;
+        return `${dias}d ${horasRestantes}h`;
+      } else if (horas > 0) {
+        const minutosRestantes = minutos % 60;
+        return `${horas}h ${minutosRestantes}m`;
+      } else {
+        return `${minutos}m`;
+      }
+    } catch (error) {
+      console.error('Error calculando duración:', error);
+      return null;
+    }
+  };
+
   const verQR = (envioId) => {
     navigation.navigate('QRView', { envioId });
   };
@@ -247,6 +277,27 @@ export default function EnviosScreen({ navigation }) {
             {item.fecha_estimada_entrega ? new Date(item.fecha_estimada_entrega).toLocaleDateString() : 'N/A'}
           </Text>
         </View>
+
+        {/* Duración del viaje para envíos entregados */}
+        {item.estado === 'entregado' && item.fecha_inicio_transito && item.fecha_entrega && (
+          <View style={styles.infoRow}>
+            <Icon name="clock-outline" size={20} color="#4CAF50" />
+            <Text style={[styles.infoText, { color: '#4CAF50', fontWeight: 'bold' }]}>
+              Duración: {calcularDuracionViaje(item.fecha_inicio_transito, item.fecha_entrega)}
+            </Text>
+          </View>
+        )}
+
+        {/* Información del transportista (solo para usuarios de almacén) */}
+        {!esTransportista && item.transportista_nombre && (
+          <View style={styles.infoRow}>
+            <Icon name="account" size={20} color="#2196F3" />
+            <Text style={styles.infoText}>
+              Transportista: {item.transportista_nombre} {item.transportista_apellido || ''}
+              {item.vehiculo_placa && ` • 🚚 ${item.vehiculo_placa}`}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.divider} />
 
@@ -345,7 +396,7 @@ export default function EnviosScreen({ navigation }) {
             ? [
                 { value: 'asignado', label: 'Asignados' },
                 { value: 'aceptado', label: 'Aceptados' },
-                { value: 'en_transito', label: 'En Ruta' },
+                { value: 'entregado', label: 'Entregados' },
               ]
             : [
                 { value: 'pendiente', label: 'Pendientes' },
