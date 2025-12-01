@@ -3,11 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 // URL del backend - CONECTADO A NODE.JS (puerto 3000)
-// Node.js consulta PostgreSQL (misma BD que usa Laravel)
+// Node.js consulta PostgreSQL (BD: Plantalogistica)
 // IMPORTANTE: Asegúrate de que Node.js esté corriendo en puerto 3000
 export const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:3000/api'  // Para web
-  : 'http://192.168.0.129:3000/api'; // IP de tu PC en red local (ACTUALIZADA)
+  : 'http://192.168.0.129:3001/api'; // ✅ IP CORRECTA DE TU PC EN WIFI
 
 const api = axios.create({
   baseURL: API_URL,
@@ -139,8 +139,8 @@ export const envioService = {
     return response.data;
   },
 
-  rechazarEnvio: async (id) => {
-    const response = await api.post(`/envios/${id}/rechazar`);
+  rechazarEnvio: async (id, motivo = 'Sin motivo especificado') => {
+    const response = await api.post(`/envios/${id}/rechazar`, { motivo });
     return response.data;
   },
 
@@ -156,8 +156,11 @@ export const envioService = {
   },
 
   // Alias para compatibilidad con EnviosScreen
-  aceptarAsignacion: async (id) => {
-    const response = await api.post(`/envios/${id}/aceptar`);
+  aceptarAsignacion: async (id, transportistaData) => {
+    const response = await api.post(`/envios/${id}/aceptar`, {
+      transportista_nombre: transportistaData?.nombre || 'Transportista',
+      transportista_email: transportistaData?.email || 'sin@email.com'
+    });
     return response.data;
   },
 

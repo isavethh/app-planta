@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const enviosController = require('../controllers/enviosController');
 const documentoController = require('../controllers/documentoController');
+const notaVentaController = require('../controllers/notaVentaController');
 const { authenticateToken } = require('../middlewares/auth');
 
 // Rutas sin autenticación (para app simplificada)
@@ -9,6 +10,7 @@ router.get('/', enviosController.getAll); // Permitir ver envíos sin auth (filt
 router.get('/codigo/:codigo', enviosController.getByCode);
 router.get('/transportista/:transportistaId', enviosController.getByTransportista); // Envíos del transportista
 router.get('/:id/documento', documentoController.generarDocumentoHTML); // Documento HTML completo (ANTES de /:id)
+router.get('/:id/nota-venta', notaVentaController.generarNotaVentaHTML); // Nota de venta HTML
 router.get('/:id', enviosController.getById);
 
 // Acciones del transportista (aceptar/rechazar asignación)

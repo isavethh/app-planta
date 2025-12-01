@@ -3,8 +3,20 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
+import { LogBox } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Configurar manejo global de errores
+LogBox.ignoreAllLogs(false); // Mostrar TODOS los logs
+console.log('🚀 App iniciando - logs habilitados');
+
+// Capturar errores no manejados
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  console.log('💥 ERROR CAPTURADO:', ...args);
+  originalConsoleError(...args);
+};
 
 // Importar pantallas
 import LoginScreen from './src/screens/LoginScreen';
@@ -16,9 +28,13 @@ import QRScannerScreen from './src/screens/QRScannerScreen';
 import QRViewScreen from './src/screens/QRViewScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
 import MapaEnvioScreen from './src/screens/MapaEnvioScreen';
+import DocumentoEnvioScreen from './src/screens/DocumentoEnvioScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
+
+// Error Boundary
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -102,22 +118,35 @@ export default function App() {
     () => ({
       signIn: async (token, user) => {
         try {
+          console.log('🔐 [App] signIn iniciando...', { token: token?.substring(0, 20), user });
+          if (!user || !user.id) {
+            console.error('❌ [App] signIn: userInfo inválido', user);
+            throw new Error('Datos de usuario inválidos');
+          }
+          console.log('✅ [App] signIn: Guardando sesión', { userId: user.id, tipo: user.tipo });
           await AsyncStorage.setItem('userToken', token);
           await AsyncStorage.setItem('userInfo', JSON.stringify(user));
           setUserToken(token);
           setUserInfo(user);
+          console.log('✅ [App] signIn completado exitosamente');
         } catch (e) {
-          console.error('Error al guardar sesión:', e);
+          console.error('❌ [App] Error al guardar sesión:', e);
+          console.error('❌ [App] Error.message:', e.message);
+          console.error('❌ [App] Error.stack:', e.stack);
+          throw e;
         }
       },
       signOut: async () => {
         try {
+          console.log('🚪 [App] signOut: Cerrando sesión...');
           await AsyncStorage.removeItem('userToken');
           await AsyncStorage.removeItem('userInfo');
           setUserToken(null);
           setUserInfo(null);
+          console.log('✅ [App] signOut: Sesión cerrada');
         } catch (e) {
-          console.error('Error al cerrar sesión:', e);
+          console.error('❌ [App] Error al cerrar sesión:', e);
+          console.error('❌ [App] Error.message:', e.message);
         }
       },
       userInfo,
@@ -131,10 +160,11 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={authContext}>
-      <PaperProvider theme={theme}>
-        <NavigationContainer>
-          <Stack.Navigator>
+    <ErrorBoundary>
+      <AuthContext.Provider value={authContext}>
+        <PaperProvider theme={theme}>
+          <NavigationContainer>
+            <Stack.Navigator>
             {userToken == null ? (
               <Stack.Screen 
                 name="Login" 
@@ -161,11 +191,7 @@ export default function App() {
                     headerShown: false
                   }}
                 />
-                <Stack.Screen 
-                  name="QRView" 
-                  component={QRViewScreen}
-                  options={{ headerShown: false }}
-                />
+                {/* QRView ya no se usa - QR integrado en EnvioDetalle */}
                 <Stack.Screen 
                   name="Tracking" 
                   component={TrackingScreen}
@@ -179,12 +205,20 @@ export default function App() {
                     headerShown: true
                   }}
                 />
+                <Stack.Screen 
+                  name="DocumentoEnvio" 
+                  component={DocumentoEnvioScreen}
+                  options={{ 
+                    headerShown: false
+                  }}
+                />
               </>
             )}
           </Stack.Navigator>
         </NavigationContainer>
       </PaperProvider>
     </AuthContext.Provider>
+    </ErrorBoundary>
   );
 }
 

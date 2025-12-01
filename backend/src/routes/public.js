@@ -36,23 +36,24 @@ router.get('/transportistas-login', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        id,
-        name as nombre, 
-        email, 
-        telefono,
-        licencia,
-        disponible
-      FROM users
-      WHERE role = 'transportista' AND disponible = true
-      ORDER BY name
+        u.id,
+        u.name as nombre,
+        u.email, 
+        u.telefono,
+        u.licencia
+      FROM users u
+      WHERE u.tipo = 'transportista'
+      ORDER BY u.name
     `);
+    
+    console.log(`✅ Transportistas encontrados: ${result.rows.length}`);
     
     res.json({
       success: true,
       data: result.rows
     });
   } catch (error) {
-    console.error('Error al obtener transportistas:', error);
+    console.error('❌ Error al obtener transportistas:', error);
     res.status(500).json({ 
       success: false,
       error: 'Error al obtener transportistas: ' + error.message 
@@ -127,14 +128,13 @@ router.post('/login-transportista', async (req, res) => {
 
     const result = await pool.query(`
       SELECT 
-        id,
-        name as nombre, 
-        email, 
-        telefono,
-        licencia,
-        disponible
-      FROM users
-      WHERE id = $1 AND role = 'transportista'
+        u.id,
+        u.name as nombre,
+        u.email, 
+        u.telefono,
+        u.licencia
+      FROM users u
+      WHERE u.id = $1 AND u.tipo = 'transportista'
     `, [transportista_id]);
 
     if (result.rows.length === 0) {
@@ -155,7 +155,6 @@ router.post('/login-transportista', async (req, res) => {
           email: transportista.email,
           telefono: transportista.telefono,
           licencia: transportista.licencia,
-          disponible: transportista.disponible,
           tipo: 'transportista'
         },
         token: 'transportista-token-' + transportista.id

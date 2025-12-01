@@ -15,26 +15,50 @@ export default function EnviosScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todos');
 
-  const esTransportista = userInfo.tipo === 'transportista';
+  const esTransportista = userInfo?.tipo === 'transportista' || userInfo?.rol_nombre === 'transportista';
 
   const cargarEnvios = async () => {
     try {
       setLoading(true);
+      
+      // Validar que userInfo existe
+      if (!userInfo || !userInfo.id) {
+        console.error('❌ [EnviosScreen] userInfo no válido:', userInfo);
+        throw new Error('Sesión inválida. Por favor, inicia sesión nuevamente.');
+      }
+      
+      console.log('[EnviosScreen] UserInfo completo:', JSON.stringify(userInfo, null, 2));
+      console.log(`[EnviosScreen] Cargando envíos para ${esTransportista ? 'transportista' : 'almacén'} ID: ${userInfo.id}`);
       let data;
       
       if (esTransportista) {
         // Cargar envíos asignados al transportista
-        data = await envioService.getByTransportista(userInfo.id);
+        console.log(`[EnviosScreen] Llamando getByTransportista(${userInfo.id})`);
+        const response = await envioService.getByTransportista(userInfo.id);
+        console.log('[EnviosScreen] Respuesta recibida:', JSON.stringify(response, null, 2));
+        data = response?.success ? response.data : (response || []);
       } else {
         // Cargar envíos del almacén
+        console.log(`[EnviosScreen] Llamando getAll(${userInfo.id})`);
         data = await envioService.getAll(userInfo.id);
       }
       
-      setEnvios(data);
-      aplicarFiltros(data, filtroEstado, searchQuery);
+      console.log(`[EnviosScreen] Total envíos recibidos: ${Array.isArray(data) ? data.length : 0}`);
+      const enviosArray = Array.isArray(data) ? data : [];
+      setEnvios(enviosArray);
+      aplicarFiltros(enviosArray, filtroEstado, searchQuery);
     } catch (error) {
-      console.error('Error al cargar envíos:', error);
-      Alert.alert('Error', 'No se pudieron cargar los envíos');
+      console.error('❌ [EnviosScreen] ERROR al cargar envíos:', error);
+      console.error('❌ [EnviosScreen] Error.message:', error?.message);
+      console.error('❌ [EnviosScreen] Error.stack:', error?.stack);
+      console.error('❌ [EnviosScreen] Error completo:', JSON.stringify(error, null, 2));
+      setEnvios([]);
+      setEnviosFiltrados([]);
+      Alert.alert(
+        '❌ Error al Cargar Envíos', 
+        `No se pudieron cargar los envíos.\n\nDetalle: ${error?.message || 'Error desconocido'}\n\nVerifica tu conexión e intenta nuevamente.`,
+        [{ text: 'Reintentar', onPress: () => cargarEnvios() }, { text: 'Cerrar' }]
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -70,27 +94,34 @@ export default function EnviosScreen({ navigation }) {
     }, [])
   );
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    cargarEnvios();
+    await cargarEnvios();
+    setRefreshing(false);
   };
 
   const handleAceptarAsignacion = async (envioId) => {
     Alert.alert(
       'Aceptar Asignación',
-      '¿Deseas aceptar este envío? Podrás iniciarlo cuando estés listo.',
+      '¿Deseas aceptar este envío? Tu firma digital quedará registrada.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Aceptar',
+          text: 'Aceptar y Firmar',
           onPress: async () => {
             try {
-              await envioService.aceptarAsignacion(envioId);
-              Alert.alert('Éxito', 'Envío aceptado. Ya puedes iniciarlo.');
+              console.log(`[EnviosScreen] Aceptando envío ID: ${envioId}`);
+              console.log(`[EnviosScreen] Transportista: ${userInfo.name} (${userInfo.email})`);
+              const result = await envioService.aceptarAsignacion(envioId, {
+                nombre: userInfo.name || 'Transportista',
+                email: userInfo.email || 'sin@email.com'
+              });
+              console.log('[EnviosScreen] Envío aceptado con firma:', result);
+              Alert.alert('✅ Éxito', 'Envío aceptado. Tu firma digital ha sido registrada. Ya puedes iniciar la ruta.');
               cargarEnvios();
             } catch (error) {
-              console.error('Error al aceptar:', error);
-              Alert.alert('Error', 'No se pudo aceptar el envío');
+              console.error('❌ [EnviosScreen] Error al aceptar:', error);
+              Alert.alert('❌ Error', `No se pudo aceptar el envío.\n\nDetalle: ${error.message}`);
             }
           },
         },
@@ -100,26 +131,41 @@ export default function EnviosScreen({ navigation }) {
 
   const handleRechazarAsignacion = async (envioId) => {
     Alert.alert(
-      'Rechazar Asignación',
-      '¿Estás seguro de rechazar este envío?',
+      '❌ Rechazar Asignación',
+      'Selecciona el motivo del rechazo:',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Rechazar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await envioService.rechazarAsignacion(envioId, 'No disponible');
-              Alert.alert('Rechazado', 'El envío fue rechazado.');
-              cargarEnvios();
-            } catch (error) {
-              console.error('Error al rechazar:', error);
-              Alert.alert('Error', 'No se pudo rechazar el envío');
-            }
-          },
+          text: 'No tengo disponibilidad',
+          onPress: () => rechazarConMotivo(envioId, 'No tengo disponibilidad en este momento')
         },
-      ]
+        {
+          text: 'Vehículo en mantenimiento',
+          onPress: () => rechazarConMotivo(envioId, 'Mi vehículo está en mantenimiento')
+        },
+        {
+          text: 'Otro motivo',
+          onPress: () => rechazarConMotivo(envioId, 'Motivo personal - No puedo realizar este envío')
+        },
+      ],
+      { cancelable: true }
     );
+  };
+
+  const rechazarConMotivo = async (envioId, motivo) => {
+    try {
+      console.log(`[EnviosScreen] Rechazando envío ID: ${envioId} - Motivo: ${motivo}`);
+      await envioService.rechazarAsignacion(envioId, motivo);
+      console.log('[EnviosScreen] Envío rechazado exitosamente');
+      Alert.alert(
+        '✅ Envío Rechazado', 
+        'El envío fue rechazado y quedará registrado en tu historial. El administrador será notificado.'
+      );
+      cargarEnvios();
+    } catch (error) {
+      console.error('❌ [EnviosScreen] Error al rechazar:', error);
+      Alert.alert('❌ Error', `No se pudo rechazar el envío.\n\nDetalle: ${error.message}`);
+    }
   };
 
   const handleIniciarRuta = async (envioId) => {
@@ -132,12 +178,14 @@ export default function EnviosScreen({ navigation }) {
           text: 'Iniciar',
           onPress: async () => {
             try {
-              await envioService.iniciarEnvio(envioId);
-              Alert.alert('Ruta Iniciada', 'El seguimiento en tiempo real está activo. ¡Buen viaje!');
+              console.log(`[EnviosScreen] Iniciando ruta para envío ID: ${envioId}`);
+              const result = await envioService.iniciarEnvio(envioId);
+              console.log('[EnviosScreen] Ruta iniciada:', result);
+              Alert.alert('🚚 Ruta Iniciada', 'El seguimiento en tiempo real está activo. ¡Buen viaje!');
               cargarEnvios();
             } catch (error) {
-              console.error('Error al iniciar:', error);
-              Alert.alert('Error', 'No se pudo iniciar la ruta');
+              console.error('❌ [EnviosScreen] Error al iniciar ruta:', error);
+              Alert.alert('❌ Error', `No se pudo iniciar la ruta.\n\nDetalle: ${error.message}`);
             }
           },
         },
@@ -181,50 +229,57 @@ export default function EnviosScreen({ navigation }) {
     return textos[estado] || estado;
   };
 
-  const verQR = (envioId) => {
-    navigation.navigate('QRView', { envioId });
+  const verDetalles = (envioId) => {
+    navigation.navigate('EnvioDetalle', { envioId });
   };
 
-  const renderEnvio = ({ item }) => (
-    <Card style={styles.card} elevation={4}>
-      <Card.Content>
-        {/* Header */}
-        <View style={styles.cardHeader}>
-          <View style={styles.codigoContainer}>
-            <Text variant="titleLarge" style={styles.codigo}>{item.codigo}</Text>
-            <View style={styles.estadoRow}>
+  const renderEnvio = ({ item }) => {
+    // Validación de datos
+    if (!item || !item.id) {
+      console.warn('[EnviosScreen] Item inválido:', item);
+      return null;
+    }
+
+    return (
+      <Card style={styles.card} elevation={4}>
+        <Card.Content>
+          {/* Header */}
+          <View style={styles.cardHeader}>
+            <View style={styles.codigoContainer}>
+              <Text variant="titleLarge" style={styles.codigo}>{item.codigo || 'Sin código'}</Text>
+              <View style={styles.estadoRow}>
+                <Icon 
+                  name={getEstadoIcon(item.estado || 'pendiente')} 
+                  size={18} 
+                  color={getEstadoColor(item.estado || 'pendiente')} 
+                />
+                <Text style={[styles.estadoText, { color: getEstadoColor(item.estado || 'pendiente') }]}>
+                  {getEstadoTexto(item.estado || 'pendiente').toUpperCase()}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.qrIconContainer}>
               <Icon 
-                name={getEstadoIcon(item.estado)} 
-                size={18} 
-                color={getEstadoColor(item.estado)} 
+                name="file-document-outline" 
+                size={28} 
+                color="#4CAF50" 
+                onPress={() => verDetalles(item.id)}
               />
-              <Text style={[styles.estadoText, { color: getEstadoColor(item.estado) }]}>
-                {getEstadoTexto(item.estado).toUpperCase()}
-              </Text>
             </View>
           </View>
-          
-          <View style={styles.qrIconContainer}>
-            <Icon 
-              name="qrcode-scan" 
-              size={28} 
-              color="#4CAF50" 
-              onPress={() => verQR(item.id)}
-            />
+
+          <View style={styles.divider} />
+
+          {/* Info del envío */}
+          <View style={styles.infoRow}>
+            <Icon name="warehouse" size={20} color="#666" />
+            <Text style={styles.infoText}>{item.almacen_nombre || 'N/A'}</Text>
           </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        {/* Info del envío */}
-        <View style={styles.infoRow}>
-          <Icon name="warehouse" size={20} color="#666" />
-          <Text style={styles.infoText}>{item.almacen_nombre || 'N/A'}</Text>
-        </View>
-        
-        <View style={styles.infoRow}>
-          <Icon name="calendar" size={20} color="#666" />
-          <Text style={styles.infoText}>
+          
+          <View style={styles.infoRow}>
+            <Icon name="calendar" size={20} color="#666" />
+            <Text style={styles.infoText}>
             {item.fecha_estimada_entrega ? new Date(item.fecha_estimada_entrega).toLocaleDateString() : 'N/A'}
           </Text>
         </View>
@@ -255,68 +310,99 @@ export default function EnviosScreen({ navigation }) {
         {esTransportista && (
           <View style={styles.actionsContainer}>
             {item.estado === 'asignado' && (
+              <Button 
+                mode="outlined" 
+                onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+                icon="file-document-outline"
+                style={styles.actionButton}
+                textColor="#2196F3"
+              >
+                Ver Detalles
+              </Button>
+            )}
+
+            {(item.estado === 'aceptado' || item.estado === 'en_transito') && (
               <View style={styles.twoButtonsRow}>
                 <Button 
-                  mode="contained" 
-                  onPress={() => handleAceptarAsignacion(item.id)}
-                  icon="check"
+                  mode="outlined" 
+                  onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+                  icon="file-document-outline"
                   style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
-                  buttonColor="#4CAF50"
+                  textColor="#2196F3"
+                  compact
                 >
-                  Aceptar
+                  Ver Detalles
                 </Button>
                 <Button 
-                  mode="outlined" 
-                  onPress={() => handleRechazarAsignacion(item.id)}
-                  icon="close"
+                  mode="contained" 
+                  onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                  icon="map-marker-path"
                   style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
-                  textColor="#F44336"
+                  buttonColor="#9C27B0"
+                  compact
                 >
-                  Rechazar
+                  Ver Ruta
                 </Button>
               </View>
             )}
 
-            {item.estado === 'aceptado' && (
-              <Button 
-                mode="contained" 
-                onPress={() => navigation.navigate('MapaEnvio', { envioId: item.id })}
-                icon="map-marker-radius"
-                style={styles.actionButton}
-                buttonColor="#00BCD4"
-              >
-                Ver Ubicación en Mapa
-              </Button>
-            )}
-
-            {item.estado === 'en_transito' && (
-              <Button 
-                mode="outlined" 
-                onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
-                icon="map-marker-path"
-                style={styles.actionButton}
-                textColor="#9C27B0"
-              >
-                Ver Seguimiento
-              </Button>
+            {item.estado === 'entregado' && (
+              <View style={styles.twoButtonsRow}>
+                <Button 
+                  mode="outlined" 
+                  onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+                  icon="file-document-outline"
+                  style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+                  textColor="#2196F3"
+                  compact
+                >
+                  Ver Detalles
+                </Button>
+                <Button 
+                  mode="contained" 
+                  onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                  icon="map-check"
+                  style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+                  buttonColor="#4CAF50"
+                  compact
+                >
+                  Ver Ruta
+                </Button>
+              </View>
             )}
           </View>
         )}
 
-        {/* Botón para ver detalles (todos los usuarios) */}
+        {/* Botones para ver detalles (usuarios no transportistas) */}
         {!esTransportista && (
-          <Button 
-            mode="outlined" 
-            onPress={() => navigation.navigate('QRView', { envioId: item.id })}
-            icon="eye"
-            style={[styles.actionButton, { marginTop: 10 }]}
-          >
-            Ver Detalles
-          </Button>
+          <View style={styles.twoButtonsRow}>
+            <Button 
+              mode="outlined" 
+              onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+              icon="file-document-outline"
+              style={[styles.actionButton, { flex: 1, marginRight: 5, marginTop: 10 }]}
+              compact
+            >
+              Ver Detalles
+            </Button>
+            {(item.estado === 'en_transito' || item.estado === 'entregado') && (
+              <Button 
+                mode="contained" 
+                onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                icon="map-marker-path"
+                style={[styles.actionButton, { flex: 1, marginLeft: 5, marginTop: 10 }]}
+                buttonColor="#9C27B0"
+                compact
+              >
+                Ver Ruta
+              </Button>
+            )}
+          </View>
         )}
-      </Card.Content>
-    </Card>
-  );
+        </Card.Content>
+      </Card>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -334,27 +420,24 @@ export default function EnviosScreen({ navigation }) {
         onValueChange={setFiltroEstado}
         buttons={[
           { value: 'todos', label: 'Todos' },
-          ...(esTransportista 
-            ? [
-                { value: 'asignado', label: 'Asignados' },
-                { value: 'aceptado', label: 'Aceptados' },
-                { value: 'en_transito', label: 'En Ruta' },
-              ]
-            : [
-                { value: 'pendiente', label: 'Pendientes' },
-                { value: 'en_transito', label: 'En Tránsito' },
-                { value: 'entregado', label: 'Entregados' },
-              ]
-          ),
+          { value: 'asignado', label: 'Asignados' },
+          { value: 'entregado', label: 'Entregados' },
         ]}
         style={styles.segmentedButtons}
       />
 
       {/* Lista de envíos */}
       <FlatList
-        data={enviosFiltrados}
+        data={enviosFiltrados || []}
         renderItem={renderEnvio}
-        keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
+        keyExtractor={(item, index) => {
+          try {
+            return item?.id?.toString() || `envio-${index}`;
+          } catch (e) {
+            console.error('[EnviosScreen] Error en keyExtractor:', e);
+            return `fallback-${index}`;
+          }
+        }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4CAF50']} />
@@ -367,6 +450,9 @@ export default function EnviosScreen({ navigation }) {
             </Text>
           </View>
         }
+        onError={(error) => {
+          console.error('[EnviosScreen] Error en FlatList:', error);
+        }}
       />
 
       {/* FAB para escanear QR */}

@@ -10,6 +10,7 @@ const catalogosRoutes = require('./catalogos');
 const checklistRoutes = require('./checklist');
 const syncRoutes = require('./sync');
 const publicRoutes = require('./public');
+const notasVentaRoutes = require('./notasVenta');
 
 // Rutas públicas
 router.use('/auth', authRoutes);
@@ -17,6 +18,9 @@ router.use('/public', publicRoutes);
 
 // Rutas de sincronización (públicas para Laravel)
 router.use('/sync', syncRoutes);
+
+// Rutas de notas de venta (públicas para Laravel)
+router.use('/notas-venta', notasVentaRoutes);
 
 // Rutas protegidas
 router.use('/usuarios', usuariosRoutes);

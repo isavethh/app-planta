@@ -419,7 +419,7 @@ export default function QRViewScreen({ route, navigation }) {
         {(envio.estado === 'aceptado' || envio.estado === 'en_transito' || envio.estado === 'entregado') && envio.firma_transportista && (
           <Card style={styles.card}>
             <Card.Title 
-              title="Firma de Transporte"
+              title="✍️ Firma del Transportista"
               left={(props) => <Icon name="file-sign" {...props} size={24} color="#4CAF50" />}
             />
             <Card.Content>

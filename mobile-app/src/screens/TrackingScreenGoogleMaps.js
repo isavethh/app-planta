@@ -378,14 +378,14 @@ export default function TrackingScreen({ route, navigation }) {
             {/* Marcador de Origen (Planta) */}
             <Marker coordinate={origen} title="Planta Principal" description="Punto de Origen">
               <View style={styles.origenMarker}>
-                <Icon name="factory" size={10} color="#FFF" />
+                <Icon name="factory" size={28} color="#FFF" />
               </View>
             </Marker>
 
             {/* Marcador de Destino (Almacén) */}
             <Marker coordinate={destino} title={envio.almacen_nombre} description="Punto de Destino">
               <View style={styles.destinoMarker}>
-                <Icon name="warehouse" size={10} color="#FFF" />
+                <Icon name="warehouse" size={28} color="#FFF" />
               </View>
             </Marker>
 
@@ -393,7 +393,7 @@ export default function TrackingScreen({ route, navigation }) {
             {rutaReal.length > 0 && (
               <Marker coordinate={posicionCamion} title="Transportista" anchor={{ x: 0.5, y: 0.5 }}>
                 <View style={styles.truckMarker}>
-                  <Icon name="truck-fast" size={12} color="#FFF" />
+                  <Icon name="truck-fast" size={32} color="#FFF" />
                 </View>
               </Marker>
             )}
@@ -590,39 +590,39 @@ const styles = StyleSheet.create({
   },
   origenMarker: {
     backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    padding: 3,
-    borderWidth: 2,
+    borderRadius: 30,
+    padding: 12,
+    borderWidth: 4,
     borderColor: '#FFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
   },
   destinoMarker: {
     backgroundColor: '#F44336',
-    borderRadius: 12,
-    padding: 3,
-    borderWidth: 2,
+    borderRadius: 30,
+    padding: 12,
+    borderWidth: 4,
     borderColor: '#FFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
   },
   truckMarker: {
     backgroundColor: '#2196F3',
-    borderRadius: 14,
-    padding: 4,
-    borderWidth: 2,
+    borderRadius: 30,
+    padding: 10,
+    borderWidth: 4,
     borderColor: '#FFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 10,
   },
   actionCard: {
     marginHorizontal: 16,

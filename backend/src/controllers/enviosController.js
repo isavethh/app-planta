@@ -190,14 +190,12 @@ const simularMovimiento = async (req, res) => {
     // Obtener envío con coordenadas de origen (planta) y destino (almacén)
     const envioResult = await pool.query(`
       SELECT e.*,
-             p.latitud  AS origen_lat,
-             p.longitud AS origen_lng,
-             COALESCE(a.latitud, d.latitud)   AS destino_lat,
-             COALESCE(a.longitud, d.longitud) AS destino_lng
+             -17.7833 AS origen_lat,
+             -63.1821 AS origen_lng,
+             a.latitud AS destino_lat,
+             a.longitud AS destino_lng
       FROM envios e
-      CROSS JOIN planta p
-      LEFT JOIN almacenes  a ON e.almacen_destino_id = a.id
-      LEFT JOIN direcciones d ON a.direccion_id = d.id
+      LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       WHERE e.id = $1
     `, [id]);
 
@@ -207,13 +205,14 @@ const simularMovimiento = async (req, res) => {
 
     const envio = envioResult.rows[0];
 
-    if (!envio.origen_lat || !envio.origen_lng || !envio.destino_lat || !envio.destino_lng) {
-      console.warn('⚠️ Faltan coordenadas completas para simular ruta, usando valores por defecto');
-      // Valores por defecto (Santa Cruz) para no romper la simulación
-      envio.origen_lat = envio.origen_lat  || -17.7833;
-      envio.origen_lng = envio.origen_lng  || -63.1821;
-      envio.destino_lat = envio.destino_lat || -17.7892;
-      envio.destino_lng = envio.destino_lng || -63.1751;
+    // Valores por defecto (Santa Cruz) si faltan coordenadas
+    const origen_lat = parseFloat(envio.origen_lat) || -17.7833;
+    const origen_lng = parseFloat(envio.origen_lng) || -63.1821;
+    const destino_lat = parseFloat(envio.destino_lat) || -17.7892;
+    const destino_lng = parseFloat(envio.destino_lng) || -63.1751;
+
+    if (!envio.origen_lat || !envio.destino_lat) {
+      console.warn('⚠️ Usando coordenadas por defecto para simulación');
     }
 
     // Actualizar estado a en_transito si aún no lo está
@@ -222,42 +221,56 @@ const simularMovimiento = async (req, res) => {
       ['en_transito', id]
     );
 
-    // Simular puntos de ruta (10 puntos entre origen y destino)
-    const puntos = [];
-    const pasos = 10;
-
-    for (let i = 0; i <= pasos; i++) {
-      const lat = parseFloat(envio.origen_lat) +
-        (parseFloat(envio.destino_lat) - parseFloat(envio.origen_lat)) * (i / pasos);
-      const lng = parseFloat(envio.origen_lng) +
-        (parseFloat(envio.destino_lng) - parseFloat(envio.origen_lng)) * (i / pasos);
-      const velocidad = 30 + Math.random() * 20; // 30-50 km/h
-
-      puntos.push({ lat, lng, velocidad });
+    // Limpiar seguimiento anterior de este envío
+    try {
+      await pool.query('DELETE FROM seguimiento_envio WHERE envio_id = $1', [id]);
+    } catch (err) {
+      console.warn('No se pudo limpiar seguimiento previo:', err.message);
     }
 
-    // Intentar guardar puntos en la base de datos (opcional)
+    // Simular puntos de ruta (15 puntos para mejor visualización)
+    const puntos = [];
+    const pasos = 15;
+
+    for (let i = 0; i <= pasos; i++) {
+      const ratio = i / pasos;
+      const lat = origen_lat + (destino_lat - origen_lat) * ratio;
+      const lng = origen_lng + (destino_lng - origen_lng) * ratio;
+      const velocidad = 30 + Math.random() * 20; // 30-50 km/h
+
+      puntos.push({ 
+        latitud: lat, 
+        longitud: lng, 
+        velocidad: velocidad.toFixed(2) 
+      });
+    }
+
+    // Guardar puntos en la base de datos
+    let puntosGuardados = 0;
     try {
       for (const punto of puntos) {
         await pool.query(`
           INSERT INTO seguimiento_envio (envio_id, latitud, longitud, velocidad)
           VALUES ($1, $2, $3, $4)
-        `, [id, punto.lat, punto.lng, punto.velocidad]);
+        `, [id, punto.latitud, punto.longitud, punto.velocidad]);
+        puntosGuardados++;
       }
+      console.log(`✅ ${puntosGuardados} puntos guardados en seguimiento_envio para envío ${id}`);
     } catch (dbError) {
-      // Si la tabla no existe u otro error de BD, lo registramos pero NO rompemos la simulación
-      console.warn('No se pudieron guardar puntos de seguimiento en BD:', dbError.message);
+      console.warn(`⚠️ Solo se guardaron ${puntosGuardados} puntos:`, dbError.message);
     }
 
     return res.json({
+      success: true,
       message: 'Simulación de ruta creada correctamente',
       puntos,
-      origen: { lat: envio.origen_lat, lng: envio.origen_lng },
-      destino: { lat: envio.destino_lat, lng: envio.destino_lng }
+      puntosGuardados,
+      origen: { lat: origen_lat, lng: origen_lng },
+      destino: { lat: destino_lat, lng: destino_lng }
     });
   } catch (error) {
-    console.error('Error al simular movimiento:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    console.error('❌ Error al simular movimiento:', error);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
   }
 };
 
@@ -300,9 +313,10 @@ const iniciarEnvio = async (req, res) => {
       WHERE e.id = $1
     `, [id]);
 
-    res.json(result.rows[0]);
+    console.log(`✅ Envío ${id} iniciado (en_transito)`);
+    res.json({ success: true, data: result.rows[0] });
   } catch (error) {
-    console.error('Error al iniciar envío:', error);
+    console.error('❌ Error al iniciar envío:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
@@ -325,9 +339,10 @@ const marcarEntregado = async (req, res) => {
       return res.status(404).json({ error: 'Envío no encontrado' });
     }
 
-    res.json(result.rows[0]);
+    console.log(`✅ Envío ${id} marcado como entregado`);
+    res.json({ success: true, data: result.rows[0] });
   } catch (error) {
-    console.error('Error al marcar como entregado:', error);
+    console.error('❌ Error al marcar como entregado:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
@@ -336,13 +351,14 @@ const marcarEntregado = async (req, res) => {
 const aceptarAsignacion = async (req, res) => {
   try {
     const { id } = req.params;
+    const { transportista_nombre, transportista_email } = req.body;
 
     // Verificar que el envío existe y obtener su estado con info del transportista
     const envioCheck = await pool.query(`
       SELECT e.estado, 
              ea.transportista_id,
-             u.name as transportista_nombre,
-             u.email as transportista_email
+             u.name as transportista_nombre_db,
+             u.email as transportista_email_db
       FROM envios e
       LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
       LEFT JOIN users u ON ea.transportista_id = u.id
@@ -355,6 +371,10 @@ const aceptarAsignacion = async (req, res) => {
 
     const envioData = envioCheck.rows[0];
     const estadoActual = envioData.estado;
+
+    // Usar datos enviados desde app o datos de BD
+    const nombreFirma = transportista_nombre || envioData.transportista_nombre_db || 'Transportista';
+    const emailFirma = transportista_email || envioData.transportista_email_db || 'sin@email.com';
 
     // Si ya está aceptado, devolver mensaje apropiado
     if (estadoActual === 'aceptado') {
@@ -383,7 +403,16 @@ const aceptarAsignacion = async (req, res) => {
     `, [id]);
 
     // Actualizar fecha_aceptacion y observaciones con firma en envio_asignaciones
-    const firmaTexto = `Firma Digital: ${envioData.transportista_nombre} - ${envioData.transportista_email}\nAceptado el: ${new Date().toLocaleString('es-ES')}`;
+    const fechaHora = new Date().toLocaleString('es-ES', { 
+      timeZone: 'America/La_Paz',
+      year: 'numeric',
+      month: '2-digit', 
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    const firmaTexto = `✍️ FIRMA DIGITAL DEL TRANSPORTISTA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nNombre: ${nombreFirma}\nEmail: ${emailFirma}\nFecha y Hora: ${fechaHora}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nEl transportista acepta la responsabilidad de este envío.`;
     
     await pool.query(`
       UPDATE envio_asignaciones
@@ -392,17 +421,18 @@ const aceptarAsignacion = async (req, res) => {
       WHERE envio_id = $1
     `, [id, firmaTexto]);
 
-    console.log(`✅ Envío ${id} aceptado por ${envioData.transportista_nombre}`);
-    console.log(`📝 Firma registrada: ${firmaTexto}`);
+    console.log(`✅ Envío ${id} aceptado por ${nombreFirma}`);
+    console.log(`📝 Firma registrada:\n${firmaTexto}`);
 
     res.json({
       success: true,
-      message: 'Envío aceptado correctamente',
+      message: 'Envío aceptado correctamente. Firma digital registrada.',
       envio: result.rows[0],
       firma: firmaTexto,
       transportista: {
-        nombre: envioData.transportista_nombre,
-        email: envioData.transportista_email
+        nombre: nombreFirma,
+        email: emailFirma,
+        fecha_aceptacion: fechaHora
       }
     });
   } catch (error) {
@@ -459,12 +489,17 @@ const getByTransportista = async (req, res) => {
              e.fecha_inicio_transito, e.fecha_entrega,
              a.nombre as almacen_nombre,
              a.direccion_completa,
-             a.latitud,
-             a.longitud,
+             a.latitud as destino_latitud,
+             a.longitud as destino_longitud,
+             -17.7833 as origen_latitud,
+             -63.1821 as origen_longitud,
+             'Planta Principal' as origen_nombre,
              ae.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
-             v.placa as vehiculo_placa
+             v.placa as vehiculo_placa,
+             v.marca as vehiculo_marca,
+             v.modelo as vehiculo_modelo
       FROM envios e
       INNER JOIN envio_asignaciones ae ON e.id = ae.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
@@ -480,6 +515,16 @@ const getByTransportista = async (req, res) => {
     `, [transportistaId]);
 
     console.log(`✅ Encontrados ${result.rows.length} envíos para transportista ${transportistaId}`);
+    
+    if (result.rows.length > 0) {
+      console.log(`📍 Ejemplo de datos del primer envío:`);
+      console.log(`   - Código: ${result.rows[0].codigo}`);
+      console.log(`   - Estado: ${result.rows[0].estado}`);
+      console.log(`   - Vehículo: ${result.rows[0].vehiculo_placa || 'No asignado'}`);
+      console.log(`   - Origen: ${result.rows[0].origen_nombre} (${result.rows[0].origen_latitud}, ${result.rows[0].origen_longitud})`);
+      console.log(`   - Destino: ${result.rows[0].almacen_nombre} (${result.rows[0].destino_latitud}, ${result.rows[0].destino_longitud})`);
+    }
+    
     res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('❌ Error al obtener envíos del transportista:', error);

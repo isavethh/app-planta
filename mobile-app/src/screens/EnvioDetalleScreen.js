@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Image } from 'react-native';
 import { Card, Text, Button, Chip, Divider, Surface, Dialog, Portal, ActivityIndicator } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { envioService } from '../services/api';
@@ -253,19 +253,42 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           </Card>
         )}
 
+        {/* Código QR integrado */}
+        {envio.qr_code && (
+          <Card style={styles.card}>
+            <Card.Title 
+              title="Código QR del Envío"
+              left={(props) => <Icon name="qrcode" {...props} size={24} color="#4CAF50" />}
+            />
+            <Card.Content style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <Image
+                source={{ uri: envio.qr_code }}
+                style={{ width: 200, height: 200 }}
+                resizeMode="contain"
+              />
+              <Text variant="bodySmall" style={{ marginTop: 10, color: '#666', textAlign: 'center' }}>
+                Escanea este código para ver el envío
+              </Text>
+            </Card.Content>
+          </Card>
+        )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Botones de acción */}
       <Surface style={styles.actionBar} elevation={4}>
-        {/* Botón para ver QR (siempre visible) */}
+        {/* Botón para ver documento del envío */}
         <Button
           mode="outlined"
-          icon="qrcode"
-          onPress={() => navigation.navigate('QRView', { envioId })}
+          icon="file-document"
+          onPress={() => {
+            const documentURL = `http://192.168.0.129:3001/api/envios/${envioId}/documento`;
+            navigation.navigate('DocumentoEnvio', { documentURL, codigo: envio.codigo });
+          }}
           style={[styles.actionButton, { marginBottom: 10 }]}
         >
-          Ver Código QR
+          Ver Documento
         </Button>
 
         {(envio.estado_nombre === 'asignado' || envio.estado_nombre === 'aceptado') && (

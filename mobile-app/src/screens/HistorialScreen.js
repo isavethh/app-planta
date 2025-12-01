@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { Card, Text, Chip, Searchbar } from 'react-native-paper';
 import { AuthContext } from '../context/AuthContext';
-import { transportistaService } from '../services/api';
+import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function HistorialScreen({ navigation }) {
@@ -33,15 +33,37 @@ export default function HistorialScreen({ navigation }) {
   const cargarHistorial = async () => {
     try {
       setLoading(true);
-      const data = await transportistaService.getEnviosAsignados(userInfo.transportista_id);
-      // Filtrar solo entregados y cancelados
-      const historial = data.filter(e => 
-        e.estado_nombre === 'entregado' || e.estado_nombre === 'cancelado'
-      );
+      
+      // Validar que userInfo existe
+      if (!userInfo || !userInfo.id) {
+        console.error('❌ [HistorialScreen] userInfo no válido:', userInfo);
+        setEnvios([]);
+        setEnviosFiltrados([]);
+        return;
+      }
+      
+      console.log('[HistorialScreen] Cargando historial para usuario ID:', userInfo.id);
+      const response = await envioService.getByTransportista(userInfo.id);
+      const data = Array.isArray(response) ? response : (response?.data || []);
+      
+      console.log('[HistorialScreen] Respuesta recibida:', data.length, 'envíos');
+      
+      // Filtrar entregados, cancelados Y RECHAZADOS
+      const historial = data.filter(e => {
+        const estado = e?.estado || '';
+        return estado === 'entregado' || estado === 'cancelado' || estado === 'rechazado';
+      });
+      
+      console.log(`[Historial] Total envíos en historial: ${historial.length}`);
+      console.log('[Historial] Envíos:', JSON.stringify(historial.map(e => ({ codigo: e?.codigo, estado: e?.estado })), null, 2));
       setEnvios(historial);
       setEnviosFiltrados(historial);
     } catch (error) {
-      console.error('Error al cargar historial:', error);
+      console.error('❌ [HistorialScreen] Error al cargar historial:', error);
+      console.error('❌ [HistorialScreen] Error.message:', error?.message);
+      console.error('❌ [HistorialScreen] Error.stack:', error?.stack);
+      setEnvios([]);
+      setEnviosFiltrados([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -54,11 +76,15 @@ export default function HistorialScreen({ navigation }) {
   };
 
   const getEstadoColor = (estado) => {
-    return estado === 'entregado' ? '#4CAF50' : '#F44336';
+    if (estado === 'entregado') return '#4CAF50';
+    if (estado === 'rechazado') return '#FF9800';
+    return '#F44336';
   };
 
   const getEstadoIcon = (estado) => {
-    return estado === 'entregado' ? 'check-circle' : 'close-circle';
+    if (estado === 'entregado') return 'check-circle';
+    if (estado === 'rechazado') return 'close-octagon';
+    return 'close-circle';
   };
 
   const renderEnvio = ({ item }) => (
@@ -70,11 +96,11 @@ export default function HistorialScreen({ navigation }) {
         <View style={styles.cardHeader}>
           <Text variant="titleMedium" style={styles.codigo}>{item.codigo}</Text>
           <Chip 
-            icon={() => <Icon name={getEstadoIcon(item.estado_nombre)} size={16} color="white" />}
-            style={[styles.estadoChip, { backgroundColor: getEstadoColor(item.estado_nombre) }]}
+            icon={() => <Icon name={getEstadoIcon(item.estado)} size={16} color="white" />}
+            style={[styles.estadoChip, { backgroundColor: getEstadoColor(item.estado) }]}
             textStyle={{ color: 'white', fontSize: 12 }}
           >
-            {item.estado_nombre?.toUpperCase()}
+            {item.estado?.toUpperCase()}
           </Chip>
         </View>
 

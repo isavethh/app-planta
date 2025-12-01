@@ -83,14 +83,17 @@ export default function LoginScreen() {
       // Crear userInfo dependiendo del tipo
       const userInfo = {
         id: itemSeleccionado.id,
-        nombre: itemSeleccionado.nombre,
+        nombre: itemSeleccionado.nombre || 'Usuario',
+        email: itemSeleccionado.email || '',
         rol_nombre: tipoUsuario,
         tipo: tipoUsuario, // IMPORTANTE: Agregar tipo para que funcione el filtrado
         almacen_id: tipoUsuario === 'almacen' ? itemSeleccionado.id : null,
         transportista_id: tipoUsuario === 'transportista' ? itemSeleccionado.id : null,
       };
 
+      console.log('[LoginScreen] UserInfo creado:', JSON.stringify(userInfo, null, 2));
       await signIn('dummy_token', userInfo);
+      console.log('[LoginScreen] SignIn completado exitosamente');
     } catch (error) {
       console.error('Error en login:', error);
       Alert.alert('Error', 'No se pudo iniciar sesión.');
@@ -212,7 +215,7 @@ export default function LoginScreen() {
                           key={item.id}
                           label={tipoUsuario === 'almacen' 
                             ? item.nombre 
-                            : `${item.nombre} ${item.apellido || ''}`
+                            : `${item.nombre} (${item.email})`
                           }
                           value={item.id.toString()}
                         />
@@ -226,7 +229,7 @@ export default function LoginScreen() {
                       <Text variant="bodyLarge" style={styles.seleccionadoTexto}>
                         {tipoUsuario === 'almacen' 
                           ? almacenes.find(a => a.id.toString() === selectedId)?.nombre
-                          : `${transportistas.find(t => t.id.toString() === selectedId)?.nombre} ${transportistas.find(t => t.id.toString() === selectedId)?.apellido || ''}`
+                          : transportistas.find(t => t.id.toString() === selectedId)?.nombre
                         }
                       </Text>
                     </View>
