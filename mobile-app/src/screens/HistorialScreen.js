@@ -14,8 +14,10 @@ export default function HistorialScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    cargarHistorial();
-  }, []);
+    if (userInfo && userInfo.id) {
+      cargarHistorial();
+    }
+  }, [userInfo]);
 
   useEffect(() => {
     if (searchQuery) {
@@ -87,18 +89,25 @@ export default function HistorialScreen({ navigation }) {
     return 'close-circle';
   };
 
-  const renderEnvio = ({ item }) => (
-    <Card 
-      style={styles.card}
-      onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
-    >
-      <Card.Content>
-        <View style={styles.cardHeader}>
-          <Text variant="titleMedium" style={styles.codigo}>{item.codigo}</Text>
-          <Chip 
-            icon={() => <Icon name={getEstadoIcon(item.estado)} size={16} color="white" />}
-            style={[styles.estadoChip, { backgroundColor: getEstadoColor(item.estado) }]}
-            textStyle={{ color: 'white', fontSize: 12 }}
+  const renderEnvio = ({ item }) => {
+    // Validación de item
+    if (!item || !item.id) {
+      console.warn('[HistorialScreen] Item inválido:', item);
+      return null;
+    }
+    
+    return (
+      <Card 
+        style={styles.card}
+        onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+      >
+        <Card.Content>
+          <View style={styles.cardHeader}>
+            <Text variant="titleMedium" style={styles.codigo}>{item.codigo || 'Sin código'}</Text>
+            <Chip 
+              icon={() => <Icon name={getEstadoIcon(item.estado)} size={16} color="white" />}
+              style={[styles.estadoChip, { backgroundColor: getEstadoColor(item.estado) }]}
+              textStyle={{ color: 'white', fontSize: 12 }}
           >
             {item.estado?.toUpperCase()}
           </Chip>
@@ -126,7 +135,8 @@ export default function HistorialScreen({ navigation }) {
         )}
       </Card.Content>
     </Card>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>

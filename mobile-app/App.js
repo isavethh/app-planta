@@ -119,20 +119,55 @@ export default function App() {
       signIn: async (token, user) => {
         try {
           console.log('🔐 [App] signIn iniciando...', { token: token?.substring(0, 20), user });
-          if (!user || !user.id) {
-            console.error('❌ [App] signIn: userInfo inválido', user);
+          
+          // Validación robusta
+          if (!user || typeof user !== 'object') {
+            console.error('❌ [App] signIn: user no es un objeto válido', user);
             throw new Error('Datos de usuario inválidos');
           }
-          console.log('✅ [App] signIn: Guardando sesión', { userId: user.id, tipo: user.tipo });
-          await AsyncStorage.setItem('userToken', token);
-          await AsyncStorage.setItem('userInfo', JSON.stringify(user));
-          setUserToken(token);
-          setUserInfo(user);
+          
+          if (!user.id) {
+            console.error('❌ [App] signIn: user.id faltante', user);
+            throw new Error('ID de usuario requerido');
+          }
+          
+          // Asegurar que tipo esté definido
+          if (!user.tipo && !user.rol_nombre) {
+            console.error('❌ [App] signIn: tipo/rol_nombre faltante', user);
+            throw new Error('Tipo de usuario requerido');
+          }
+          
+          // Normalizar datos
+          const userNormalized = {
+            ...user,
+            id: user.id,
+            nombre: user.nombre || user.name || 'Usuario',
+            name: user.name || user.nombre || 'Usuario',
+            email: user.email || 'sin@email.com',
+            tipo: user.tipo || user.rol_nombre,
+            rol_nombre: user.rol_nombre || user.tipo
+          };
+          
+          console.log('✅ [App] signIn: Datos normalizados', userNormalized);
+          console.log('✅ [App] signIn: Guardando sesión', { userId: userNormalized.id, tipo: userNormalized.tipo });
+          
+          await AsyncStorage.setItem('userToken', token || 'dummy_token');
+          await AsyncStorage.setItem('userInfo', JSON.stringify(userNormalized));
+          
+          // Actualizar estado DESPUÉS de guardar en AsyncStorage
+          setUserToken(token || 'dummy_token');
+          setUserInfo(userNormalized);
+          
+          // Esperar un tick para asegurar que el estado se actualiza
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
           console.log('✅ [App] signIn completado exitosamente');
+          console.log('✅ [App] Estado actualizado - Token:', (token || 'dummy_token').substring(0, 20));
+          console.log('✅ [App] Estado actualizado - UserInfo:', { id: userNormalized.id, tipo: userNormalized.tipo });
         } catch (e) {
           console.error('❌ [App] Error al guardar sesión:', e);
-          console.error('❌ [App] Error.message:', e.message);
-          console.error('❌ [App] Error.stack:', e.stack);
+          console.error('❌ [App] Error.message:', e?.message);
+          console.error('❌ [App] Error.stack:', e?.stack);
           throw e;
         }
       },

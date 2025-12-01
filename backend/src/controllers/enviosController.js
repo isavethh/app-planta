@@ -63,6 +63,9 @@ const getById = async (req, res) => {
 
     const envio = envioResult.rows[0];
     
+    // Normalizar campo estado_nombre
+    envio.estado_nombre = envio.estado;
+    
     // Obtener productos del envío
     const productosResult = await pool.query(`
       SELECT *
@@ -424,16 +427,34 @@ const aceptarAsignacion = async (req, res) => {
     console.log(`✅ Envío ${id} aceptado por ${nombreFirma}`);
     console.log(`📝 Firma registrada:\n${firmaTexto}`);
 
+    // GENERAR NOTA DE VENTA AUTOMÁTICAMENTE
+    let notaVentaInfo = null;
+    try {
+      console.log(`📄 Generando nota de venta para envío ${id}...`);
+      const notaVentaController = require('./notaVentaController');
+      const notaResult = await notaVentaController.generarNotaVenta(id);
+      notaVentaInfo = {
+        numero_nota: notaResult.nota.numero_nota,
+        total_precio: notaResult.nota.total_precio,
+        total_cantidad: notaResult.nota.total_cantidad
+      };
+      console.log(`✅ Nota de venta generada: ${notaResult.nota.numero_nota}`);
+    } catch (notaError) {
+      console.error('❌ Error al generar nota de venta:', notaError.message);
+      // No falla la aceptación si falla la nota de venta
+    }
+
     res.json({
       success: true,
-      message: 'Envío aceptado correctamente. Firma digital registrada.',
+      message: 'Envío aceptado correctamente. Firma digital registrada y nota de venta generada.',
       envio: result.rows[0],
       firma: firmaTexto,
       transportista: {
         nombre: nombreFirma,
         email: emailFirma,
         fecha_aceptacion: fechaHora
-      }
+      },
+      nota_venta: notaVentaInfo
     });
   } catch (error) {
     console.error('Error al aceptar asignación:', error);

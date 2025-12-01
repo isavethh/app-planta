@@ -30,11 +30,28 @@ export default function TrackingScreen({ route, navigation }) {
     try {
       console.log(`[TrackingScreen] Cargando datos del envío ID: ${envioId}`);
       const data = await envioService.getById(envioId);
-      console.log('[TrackingScreen] Envío cargado:', data);
+      
+      // Validar datos recibidos
+      if (!data || !data.id) {
+        throw new Error('Datos del envío inválidos');
+      }
+      
+      // Normalizar estado_nombre
+      if (data.estado && !data.estado_nombre) {
+        data.estado_nombre = data.estado;
+      }
+      
+      console.log('[TrackingScreen] Envío cargado:', {
+        id: data.id,
+        codigo: data.codigo,
+        estado: data.estado,
+        estado_nombre: data.estado_nombre
+      });
+      
       setEnvio(data);
     } catch (error) {
       console.error('❌ [TrackingScreen] Error al cargar envío:', error);
-      Alert.alert('❌ Error', `No se pudo cargar el envío.\n\nDetalle: ${error.message}`);
+      Alert.alert('❌ Error', `No se pudo cargar el envío.\n\nDetalle: ${error?.message || 'Error desconocido'}`);
     } finally {
       setLoading(false);
     }

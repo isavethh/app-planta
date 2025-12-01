@@ -100,7 +100,14 @@ export const envioService = {
   },
 
   getById: async (id) => {
+    console.log(`🌐 [API] Obteniendo envío ID: ${id}`);
     const response = await api.get(`/envios/${id}`);
+    console.log('🌐 [API] Respuesta recibida:', JSON.stringify(response.data, null, 2));
+    console.log('🌐 [API] Estado del envío:', {
+      estado: response.data?.estado,
+      estado_nombre: response.data?.estado_nombre,
+      keys: Object.keys(response.data || {}).filter(k => k.includes('estado'))
+    });
     return response.data;
   },
 

@@ -15,6 +15,9 @@ export default function LoginScreen() {
   const [loadingData, setLoadingData] = useState(false);
   const { signIn } = useContext(AuthContext);
 
+  // Log para debug
+  console.log('[LoginScreen] Componente montado');
+
   useEffect(() => {
     if (tipoUsuario) {
       cargarDatos();
@@ -92,11 +95,19 @@ export default function LoginScreen() {
       };
 
       console.log('[LoginScreen] UserInfo creado:', JSON.stringify(userInfo, null, 2));
-      await signIn('dummy_token', userInfo);
-      console.log('[LoginScreen] SignIn completado exitosamente');
+      
+      try {
+        await signIn('dummy_token', userInfo);
+        console.log('[LoginScreen] SignIn completado exitosamente');
+      } catch (signInError) {
+        console.error('[LoginScreen] Error en signIn:', signInError);
+        throw signInError;
+      }
     } catch (error) {
-      console.error('Error en login:', error);
-      Alert.alert('Error', 'No se pudo iniciar sesión.');
+      console.error('[LoginScreen] Error en login:', error);
+      console.error('[LoginScreen] Error.message:', error?.message);
+      console.error('[LoginScreen] Error.stack:', error?.stack);
+      Alert.alert('Error', `No se pudo iniciar sesión.\n\nDetalle: ${error?.message || 'Error desconocido'}`);
     } finally {
       setLoading(false);
     }

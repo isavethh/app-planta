@@ -20,10 +20,15 @@ const generarNotaVenta = async (envioId) => {
 
     // Obtener productos del envío
     const productosResult = await pool.query(`
-      SELECT ep.*, p.nombre as producto_nombre
-      FROM envio_productos ep
-      LEFT JOIN productos p ON ep.producto_id = p.id
-      WHERE ep.envio_id = $1
+      SELECT 
+        producto_nombre,
+        cantidad,
+        precio_unitario,
+        peso_unitario,
+        total_peso,
+        total_precio
+      FROM envio_productos
+      WHERE envio_id = $1
     `, [envioId]);
 
     const productos = productosResult.rows;
@@ -89,10 +94,15 @@ const generarNotaVentaHTML = async (req, res) => {
 
     // Obtener productos del envío
     const productosResult = await pool.query(`
-      SELECT ep.*, p.nombre as producto_nombre
-      FROM envio_productos ep
-      LEFT JOIN productos p ON ep.producto_id = p.id
-      WHERE ep.envio_id = $1
+      SELECT 
+        producto_nombre,
+        cantidad,
+        precio_unitario,
+        peso_unitario,
+        total_peso,
+        total_precio
+      FROM envio_productos
+      WHERE envio_id = $1
     `, [nota.envio_id]);
 
     const productos = productosResult.rows;

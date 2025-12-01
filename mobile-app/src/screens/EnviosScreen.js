@@ -90,8 +90,10 @@ export default function EnviosScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      cargarEnvios();
-    }, [])
+      if (userInfo && userInfo.id) {
+        cargarEnvios();
+      }
+    }, [userInfo])
   );
 
   const onRefresh = async () => {
@@ -310,15 +312,28 @@ export default function EnviosScreen({ navigation }) {
         {esTransportista && (
           <View style={styles.actionsContainer}>
             {item.estado === 'asignado' && (
-              <Button 
-                mode="outlined" 
-                onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
-                icon="file-document-outline"
-                style={styles.actionButton}
-                textColor="#2196F3"
-              >
-                Ver Detalles
-              </Button>
+              <View style={styles.twoButtonsRow}>
+                <Button 
+                  mode="contained" 
+                  onPress={() => handleAceptarAsignacion(item.id)}
+                  icon="check-circle"
+                  style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+                  buttonColor="#4CAF50"
+                  compact
+                >
+                  Aceptar
+                </Button>
+                <Button 
+                  mode="outlined" 
+                  onPress={() => handleRechazarAsignacion(item.id)}
+                  icon="close-circle"
+                  style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+                  textColor="#F44336"
+                  compact
+                >
+                  Rechazar
+                </Button>
+              </View>
             )}
 
             {(item.estado === 'aceptado' || item.estado === 'en_transito') && (

@@ -20,9 +20,31 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     try {
       setLoading(true);
       const data = await envioService.getById(envioId);
+      
+      if (!data) {
+        throw new Error('No se recibió data del envío');
+      }
+      
+      // Normalizar campo estado - IMPORTANTE
+      if (data.estado && !data.estado_nombre) {
+        data.estado_nombre = data.estado;
+      } else if (!data.estado && data.estado_nombre) {
+        data.estado = data.estado_nombre;
+      }
+      
+      console.log('🔍 [EnvioDetalle] Envío cargado completo:', {
+        id: data.id,
+        codigo: data.codigo,
+        estado: data.estado,
+        estado_nombre: data.estado_nombre,
+        'Condición asignado': data.estado_nombre === 'asignado',
+        'typeof estado_nombre': typeof data.estado_nombre,
+        'Keys del objeto': Object.keys(data).filter(k => k.includes('estado'))
+      });
+      
       setEnvio(data);
     } catch (error) {
-      console.error('Error al cargar envío:', error);
+      console.error('❌ [EnvioDetalle] Error al cargar envío:', error);
       Alert.alert('Error', 'No se pudo cargar el envío');
     } finally {
       setLoading(false);
@@ -39,7 +61,47 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     setActionLoading(true);
 
     try {
-      if (accionPendiente === 'iniciar') {
+      if (accionPendiente === 'aceptar') {
+        // Aceptar envío y generar nota de venta automáticamente
+        console.log('[EnvioDetalle] Aceptando envío y generando nota de venta...');
+        const result = await envioService.aceptarAsignacion(envioId, {
+          nombre: 'Transportista', // TODO: obtener de userInfo
+          email: 'transportista@example.com' // TODO: obtener de userInfo
+        });
+        
+        console.log('[EnvioDetalle] Envío aceptado:', result);
+        
+        Alert.alert(
+          '✅ Envío Aceptado', 
+          'Has aceptado el envío exitosamente. Tu firma digital ha sido registrada y se generó una nota de venta automáticamente.',
+          [{ text: 'OK', onPress: () => {
+            cargarEnvio();
+            navigation.goBack();
+          }}]
+        );
+      } else if (accionPendiente === 'rechazar') {
+        // Mostrar opciones de motivo de rechazo
+        Alert.alert(
+          '❌ Motivo del Rechazo',
+          'Selecciona el motivo:',
+          [
+            {
+              text: 'No tengo disponibilidad',
+              onPress: () => rechazarConMotivo('No tengo disponibilidad en este momento')
+            },
+            {
+              text: 'Vehículo en mantenimiento',
+              onPress: () => rechazarConMotivo('Mi vehículo está en mantenimiento')
+            },
+            {
+              text: 'Otro motivo',
+              onPress: () => rechazarConMotivo('Motivo personal')
+            },
+            { text: 'Cancelar', style: 'cancel' }
+          ],
+          { cancelable: true }
+        );
+      } else if (accionPendiente === 'iniciar') {
         // Usar el nuevo servicio iniciarEnvio que también inicia la simulación
         await envioService.iniciarEnvio(envioId);
 
@@ -68,6 +130,27 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     } finally {
       setActionLoading(false);
       setAccionPendiente(null);
+    }
+  };
+
+  const rechazarConMotivo = async (motivo) => {
+    try {
+      setActionLoading(true);
+      console.log('[EnvioDetalle] Rechazando envío con motivo:', motivo);
+      await envioService.rechazarAsignacion(envioId, motivo);
+      
+      Alert.alert(
+        '✅ Envío Rechazado',
+        'El envío fue rechazado y quedará registrado en tu historial. El administrador será notificado.',
+        [{ text: 'OK', onPress: () => {
+          navigation.goBack();
+        }}]
+      );
+    } catch (error) {
+      console.error('[EnvioDetalle] Error al rechazar:', error);
+      Alert.alert('Error', `No se pudo rechazar el envío: ${error.message}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -110,7 +193,11 @@ export default function EnvioDetalleScreen({ route, navigation }) {
   };
 
   const getMensajeConfirmacion = () => {
-    if (accionPendiente === 'iniciar') {
+    if (accionPendiente === 'aceptar') {
+      return '¿Aceptar este envío? Se generará tu firma digital y una nota de venta automáticamente.';
+    } else if (accionPendiente === 'rechazar') {
+      return '¿Rechazar este envío? Deberás especificar el motivo del rechazo.';
+    } else if (accionPendiente === 'iniciar') {
       return '¿Estás seguro de iniciar este envío? Se activará el seguimiento en tiempo real.';
     } else if (accionPendiente === 'entregar') {
       return '¿Confirmas que has entregado este envío? Esta acción no se puede deshacer.';
@@ -278,6 +365,11 @@ export default function EnvioDetalleScreen({ route, navigation }) {
 
       {/* Botones de acción */}
       <Surface style={styles.actionBar} elevation={4}>
+        {/* DEBUG INFO */}
+        <Text style={{ fontSize: 10, color: 'red', marginBottom: 5 }}>
+          DEBUG: estado={envio.estado} | estado_nombre={envio.estado_nombre}
+        </Text>
+        
         {/* Botón para ver documento del envío */}
         <Button
           mode="outlined"
@@ -291,7 +383,35 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           Ver Documento
         </Button>
 
-        {(envio.estado_nombre === 'asignado' || envio.estado_nombre === 'aceptado') && (
+        {/* Botones ACEPTAR y RECHAZAR para envíos ASIGNADOS */}
+        {(envio.estado_nombre === 'asignado' || envio.estado === 'asignado' || true) && (
+          <View style={styles.twoButtonsRow}>
+            <Button
+              mode="contained"
+              icon="check-circle"
+              onPress={() => confirmarAccion('aceptar')}
+              style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+              buttonColor="#4CAF50"
+              loading={actionLoading}
+              disabled={actionLoading}
+            >
+              Aceptar Envío
+            </Button>
+            <Button
+              mode="outlined"
+              icon="close-circle"
+              onPress={() => confirmarAccion('rechazar')}
+              style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+              textColor="#F44336"
+              loading={actionLoading}
+              disabled={actionLoading}
+            >
+              Rechazar
+            </Button>
+          </View>
+        )}
+
+        {(envio.estado_nombre === 'aceptado' || envio.estado === 'aceptado') && (
           <Button
             mode="contained"
             icon="play-circle"
@@ -304,7 +424,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           </Button>
         )}
 
-        {envio.estado_nombre === 'en_transito' && (
+        {(envio.estado_nombre === 'en_transito' || envio.estado === 'en_transito') && (
           <Button
             mode="contained"
             icon="check-circle"
@@ -468,6 +588,11 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     borderRadius: 8,
+  },
+  twoButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   completedContainer: {
     flexDirection: 'row',
