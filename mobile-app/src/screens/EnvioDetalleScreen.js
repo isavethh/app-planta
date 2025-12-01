@@ -360,22 +360,17 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           </Card>
         )}
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 200 }} />
       </ScrollView>
 
       {/* Botones de acción */}
       <Surface style={styles.actionBar} elevation={4}>
-        {/* DEBUG INFO */}
-        <Text style={{ fontSize: 10, color: 'red', marginBottom: 5 }}>
-          DEBUG: estado={envio.estado} | estado_nombre={envio.estado_nombre}
-        </Text>
-        
         {/* Botón para ver documento del envío */}
         <Button
           mode="outlined"
           icon="file-document"
           onPress={() => {
-            const documentURL = `http://192.168.0.129:3001/api/envios/${envioId}/documento`;
+            const documentURL = `http://10.26.14.34:3001/api/envios/${envioId}/documento`;
             navigation.navigate('DocumentoEnvio', { documentURL, codigo: envio.codigo });
           }}
           style={[styles.actionButton, { marginBottom: 10 }]}
@@ -384,7 +379,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         </Button>
 
         {/* Botones ACEPTAR y RECHAZAR para envíos ASIGNADOS */}
-        {(envio.estado_nombre === 'asignado' || envio.estado === 'asignado' || true) && (
+        {(envio.estado_nombre === 'asignado' || envio.estado === 'asignado') && (
           <View style={styles.twoButtonsRow}>
             <Button
               mode="contained"

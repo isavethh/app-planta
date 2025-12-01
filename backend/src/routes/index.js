@@ -11,6 +11,7 @@ const checklistRoutes = require('./checklist');
 const syncRoutes = require('./sync');
 const publicRoutes = require('./public');
 const notasVentaRoutes = require('./notasVenta');
+const almacenAppRoutes = require('./almacenApp');
 
 // Rutas públicas
 router.use('/auth', authRoutes);
@@ -21,6 +22,9 @@ router.use('/sync', syncRoutes);
 
 // Rutas de notas de venta (públicas para Laravel)
 router.use('/notas-venta', notasVentaRoutes);
+
+// Rutas específicas para app móvil de almacén (sin auth)
+router.use('/almacen-app', almacenAppRoutes);
 
 // Rutas protegidas
 router.use('/usuarios', usuariosRoutes);

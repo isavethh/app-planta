@@ -6,12 +6,26 @@ import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function HistorialScreen({ navigation }) {
-  const { userInfo } = useContext(AuthContext);
+  console.log('📜 [HistorialScreen] Componente iniciando...');
+  
+  const authContext = useContext(AuthContext);
+  const userInfo = authContext?.userInfo;
+  
   const [envios, setEnvios] = useState([]);
   const [enviosFiltrados, setEnviosFiltrados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Protección temprana
+  if (!userInfo) {
+    console.log('⏳ [HistorialScreen] Esperando userInfo...');
+    return (
+      <View style={styles.container}>
+        <Text>Cargando...</Text>
+      </View>
+    );
+  }
 
   useEffect(() => {
     if (userInfo && userInfo.id) {

@@ -2,12 +2,12 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// URL del backend - CONECTADO A NODE.JS (puerto 3000)
+// URL del backend - CONECTADO A NODE.JS (puerto 3001)
 // Node.js consulta PostgreSQL (BD: Plantalogistica)
-// IMPORTANTE: Asegúrate de que Node.js esté corriendo en puerto 3000
+// IMPORTANTE: Asegúrate de que Node.js esté corriendo en puerto 3001
 export const API_URL = Platform.OS === 'web' 
-  ? 'http://localhost:3000/api'  // Para web
-  : 'http://192.168.0.129:3001/api'; // ✅ IP CORRECTA DE TU PC EN WIFI
+  ? 'http://localhost:3001/api'  // Para web
+  : 'http://10.26.14.34:3001/api'; // ✅ IP CORRECTA DE TU PC EN NUEVO WIFI
 
 const api = axios.create({
   baseURL: API_URL,
@@ -174,6 +174,40 @@ export const envioService = {
   rechazarAsignacion: async (id, motivo) => {
     const response = await api.post(`/envios/${id}/rechazar`, { motivo });
     return response.data;
+  },
+};
+
+// Servicios de almacén
+export const almacenService = {
+  // Obtener estadísticas del almacén
+  getEstadisticas: async (almacenId) => {
+    console.log(`📊 [API] Obteniendo estadísticas del almacén: ${almacenId}`);
+    const response = await api.get(`/almacen-app/${almacenId}/estadisticas`);
+    console.log(`✅ [API] Estadísticas recibidas`);
+    return response.data?.data || null;
+  },
+  
+  // Obtener envíos asignados a un almacén
+  getEnviosAlmacen: async (almacenId) => {
+    console.log(`📦 [API] Obteniendo envíos del almacén: ${almacenId}`);
+    const response = await api.get(`/almacen-app/${almacenId}/envios`);
+    console.log(`✅ [API] Envíos recibidos:`, response.data?.data?.length || 0);
+    return response.data?.data || [];
+  },
+
+  // Obtener notas de venta de un almacén
+  getNotasVentaAlmacen: async (almacenId) => {
+    console.log(`📄 [API] Obteniendo notas de venta del almacén: ${almacenId}`);
+    const response = await api.get(`/almacen-app/${almacenId}/notas-venta`);
+    console.log(`✅ [API] Notas de venta recibidas:`, response.data?.data?.length || 0);
+    return response.data?.data || [];
+  },
+
+  // Obtener detalles de una nota de venta específica
+  getNotaVentaDetalle: async (notaVentaId) => {
+    console.log(`📄 [API] Obteniendo detalles de nota de venta: ${notaVentaId}`);
+    const response = await api.get(`/almacen-app/nota-venta/${notaVentaId}`);
+    return response.data?.data || null;
   },
 };
 

@@ -6,9 +6,24 @@ import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function PerfilScreen() {
-  const { userInfo, signOut } = useContext(AuthContext);
+  console.log('👤 [PerfilScreen] Componente iniciando...');
+  
+  const authContext = useContext(AuthContext);
+  const userInfo = authContext?.userInfo;
+  const signOut = authContext?.signOut;
+  
   const [stats, setStats] = useState({ total: 0, enTransito: 0, completados: 0 });
   const [loading, setLoading] = useState(true);
+
+  // Protección temprana
+  if (!userInfo) {
+    console.log('⏳ [PerfilScreen] Esperando userInfo...');
+    return (
+      <View style={styles.container}>
+        <Text>Cargando perfil...</Text>
+      </View>
+    );
+  }
 
   useEffect(() => {
     cargarEstadisticas();

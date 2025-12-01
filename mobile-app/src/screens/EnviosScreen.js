@@ -7,7 +7,13 @@ import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function EnviosScreen({ navigation }) {
-  const { userInfo } = useContext(AuthContext);
+  console.log('🎬 [EnviosScreen] Componente iniciando...');
+  
+  const authContext = useContext(AuthContext);
+  const userInfo = authContext?.userInfo;
+  
+  console.log('👤 [EnviosScreen] UserInfo recibido:', userInfo ? `ID: ${userInfo.id}` : 'NULL');
+  
   const [envios, setEnvios] = useState([]);
   const [enviosFiltrados, setEnviosFiltrados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,15 +22,33 @@ export default function EnviosScreen({ navigation }) {
   const [filtroEstado, setFiltroEstado] = useState('todos');
 
   const esTransportista = userInfo?.tipo === 'transportista' || userInfo?.rol_nombre === 'transportista';
+  
+  // Si no hay userInfo, mostrar pantalla de carga
+  if (!userInfo) {
+    console.log('⏳ [EnviosScreen] Esperando userInfo...');
+    return (
+      <View style={styles.container}>
+        <Text>Cargando información de usuario...</Text>
+      </View>
+    );
+  }
 
   const cargarEnvios = async () => {
     try {
       setLoading(true);
       
-      // Validar que userInfo existe
-      if (!userInfo || !userInfo.id) {
-        console.error('❌ [EnviosScreen] userInfo no válido:', userInfo);
-        throw new Error('Sesión inválida. Por favor, inicia sesión nuevamente.');
+      // Validar que userInfo existe antes de hacer nada
+      if (!userInfo) {
+        console.warn('⚠️ [EnviosScreen] userInfo es null/undefined, esperando...');
+        setLoading(false);
+        return;
+      }
+      
+      if (!userInfo.id) {
+        console.error('❌ [EnviosScreen] userInfo.id faltante:', userInfo);
+        Alert.alert('Error', 'Sesión inválida. Por favor, cierra sesión e inicia de nuevo.');
+        setLoading(false);
+        return;
       }
       
       console.log('[EnviosScreen] UserInfo completo:', JSON.stringify(userInfo, null, 2));

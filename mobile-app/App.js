@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Provider as PaperProvider, MD3LightTheme } from 'react-native-paper';
-import { LogBox } from 'react-native';
+import { Provider as PaperProvider, MD3LightTheme, Text } from 'react-native-paper';
+import { LogBox, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -29,6 +29,9 @@ import QRViewScreen from './src/screens/QRViewScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
 import MapaEnvioScreen from './src/screens/MapaEnvioScreen';
 import DocumentoEnvioScreen from './src/screens/DocumentoEnvioScreen';
+import AlmacenEnviosScreen from './src/screens/AlmacenEnviosScreen';
+import AlmacenNotasVentaScreen from './src/screens/AlmacenNotasVentaScreen';
+import AlmacenEstadisticasScreen from './src/screens/AlmacenEstadisticasScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -51,26 +54,29 @@ const theme = {
 
 // Tabs del transportista
 function TransportistaTabs() {
-  return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
+  console.log('📱 [TransportistaTabs] Renderizando...');
+  
+  try {
+    return (
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName;
 
-          if (route.name === 'MisEnvios') {
-            iconName = 'truck-delivery';
-          } else if (route.name === 'Historial') {
-            iconName = 'history';
-          } else if (route.name === 'Perfil') {
-            iconName = 'account';
-          }
+            if (route.name === 'MisEnvios') {
+              iconName = 'truck-delivery';
+            } else if (route.name === 'Historial') {
+              iconName = 'history';
+            } else if (route.name === 'Perfil') {
+              iconName = 'account';
+            }
 
-          return <Icon name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: '#4CAF50',
-        tabBarInactiveTintColor: 'gray',
-      })}
-    >
+            return <Icon name={iconName} size={size} color={color} />;
+          },
+          tabBarActiveTintColor: '#4CAF50',
+          tabBarInactiveTintColor: 'gray',
+        })}
+      >
       <Tab.Screen 
         name="MisEnvios" 
         component={EnviosScreen} 
@@ -87,7 +93,78 @@ function TransportistaTabs() {
         options={{ title: 'Mi Perfil' }}
       />
     </Tab.Navigator>
-  );
+    );
+  } catch (error) {
+    console.error('💥 [TransportistaTabs] ERROR CRÍTICO:', error);
+    console.error('💥 [TransportistaTabs] Stack:', error.stack);
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 20, color: 'red', marginBottom: 10 }}>Error al cargar tabs</Text>
+        <Text style={{ color: '#666' }}>{error.message}</Text>
+      </View>
+    );
+  }
+}
+
+// Tabs del almacén
+function AlmacenTabs() {
+  console.log('📱 [AlmacenTabs] Renderizando...');
+  
+  try {
+    return (
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName;
+
+            if (route.name === 'Envios') {
+              iconName = 'package-variant';
+            } else if (route.name === 'NotasVenta') {
+              iconName = 'receipt';
+            } else if (route.name === 'Estadisticas') {
+              iconName = 'chart-box';
+            } else if (route.name === 'Perfil') {
+              iconName = 'account';
+            }
+
+            return <Icon name={iconName} size={size} color={color} />;
+          },
+          tabBarActiveTintColor: '#4CAF50',
+          tabBarInactiveTintColor: 'gray',
+        })}
+      >
+      <Tab.Screen 
+        name="Envios" 
+        component={AlmacenEnviosScreen} 
+        options={{ title: 'Envíos', headerShown: true, headerTitle: '📦 Mis Envíos' }}
+      />
+      <Tab.Screen 
+        name="NotasVenta" 
+        component={AlmacenNotasVentaScreen}
+        options={{ title: 'Notas', headerShown: true, headerTitle: '📄 Notas de Venta' }}
+      />
+      <Tab.Screen 
+        name="Estadisticas" 
+        component={AlmacenEstadisticasScreen}
+        options={{ title: 'Estadísticas', headerShown: true, headerTitle: '📊 Estadísticas' }}
+      />
+      <Tab.Screen 
+        name="Perfil" 
+        component={PerfilScreen}
+        options={{ title: 'Perfil' }}
+      />
+    </Tab.Navigator>
+    );
+  } catch (error) {
+    console.error('💥 [AlmacenTabs] ERROR CRÍTICO:', error);
+    console.error('💥 [AlmacenTabs] Stack:', error.stack);
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ fontSize: 20, color: 'red', marginBottom: 10 }}>Error al cargar tabs</Text>
+        <Text style={{ color: '#666' }}>{error.message}</Text>
+      </View>
+    );
+  }
 }
 
 export default function App() {
@@ -95,17 +172,27 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [userInfo, setUserInfo] = useState(null);
 
-  // NO restaurar sesión automáticamente - siempre mostrar login
+  // Restaurar sesión si existe
   useEffect(() => {
     const bootstrapAsync = async () => {
       try {
-        // Limpiar sesión anterior
+        console.log('🔄 [App] Verificando sesión guardada...');
+        const token = await AsyncStorage.getItem('userToken');
+        const userInfoString = await AsyncStorage.getItem('userInfo');
+        
+        if (token && userInfoString) {
+          const user = JSON.parse(userInfoString);
+          console.log('✅ [App] Sesión encontrada - Restaurando...', { userId: user.id, tipo: user.tipo });
+          setUserToken(token);
+          setUserInfo(user);
+        } else {
+          console.log('ℹ️ [App] No hay sesión guardada');
+        }
+      } catch (e) {
+        console.error('❌ [App] Error al verificar sesión:', e);
+        // Si hay error, limpiar todo
         await AsyncStorage.removeItem('userToken');
         await AsyncStorage.removeItem('userInfo');
-        setUserToken(null);
-        setUserInfo(null);
-      } catch (e) {
-        console.error('Error:', e);
       } finally {
         setIsLoading(false);
       }
@@ -151,19 +238,28 @@ export default function App() {
           console.log('✅ [App] signIn: Datos normalizados', userNormalized);
           console.log('✅ [App] signIn: Guardando sesión', { userId: userNormalized.id, tipo: userNormalized.tipo });
           
+          // Guardar en AsyncStorage PRIMERO
           await AsyncStorage.setItem('userToken', token || 'dummy_token');
           await AsyncStorage.setItem('userInfo', JSON.stringify(userNormalized));
+          console.log('💾 [App] Datos guardados en AsyncStorage');
           
-          // Actualizar estado DESPUÉS de guardar en AsyncStorage
+          // Actualizar estados juntos en un solo batch
+          console.log('🔄 [App] Actualizando estados...');
           setUserToken(token || 'dummy_token');
           setUserInfo(userNormalized);
           
-          // Esperar un tick para asegurar que el estado se actualiza
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Dar tiempo para que React procese los cambios de estado
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           console.log('✅ [App] signIn completado exitosamente');
           console.log('✅ [App] Estado actualizado - Token:', (token || 'dummy_token').substring(0, 20));
           console.log('✅ [App] Estado actualizado - UserInfo:', { id: userNormalized.id, tipo: userNormalized.tipo });
+          
+          // Verificación final
+          const tokenCheck = await AsyncStorage.getItem('userToken');
+          const userCheck = await AsyncStorage.getItem('userInfo');
+          console.log('✅ [App] Verificación AsyncStorage - Token:', tokenCheck ? 'OK' : 'FALTA');
+          console.log('✅ [App] Verificación AsyncStorage - UserInfo:', userCheck ? 'OK' : 'FALTA');
         } catch (e) {
           console.error('❌ [App] Error al guardar sesión:', e);
           console.error('❌ [App] Error.message:', e?.message);
@@ -194,13 +290,22 @@ export default function App() {
     return null; // Aquí podrías poner un splash screen
   }
 
+  // Validación adicional para evitar crashes
+  console.log('🎯 [App] Renderizando - Token:', userToken ? 'SÍ' : 'NO', 'UserInfo:', userInfo ? 'SÍ' : 'NO');
+  
+  // Si estamos en transición (hay token pero no userInfo todavía), mostrar loading
+  if (userToken && !userInfo) {
+    console.log('⏳ [App] En transición - esperando userInfo...');
+    return null; // Mostrar nada mientras se sincroniza
+  }
+
   return (
     <ErrorBoundary>
       <AuthContext.Provider value={authContext}>
         <PaperProvider theme={theme}>
           <NavigationContainer>
             <Stack.Navigator>
-            {userToken == null ? (
+            {userToken == null || !userInfo ? (
               <Stack.Screen 
                 name="Login" 
                 component={LoginScreen}
@@ -208,9 +313,14 @@ export default function App() {
               />
             ) : (
               <>
+                {/* Renderizar tabs según el tipo de usuario */}
                 <Stack.Screen 
                   name="Main" 
-                  component={TransportistaTabs}
+                  component={
+                    userInfo?.tipo === 'almacen' || userInfo?.rol_nombre === 'almacen'
+                      ? AlmacenTabs 
+                      : TransportistaTabs
+                  }
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen 
