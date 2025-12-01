@@ -10,14 +10,13 @@ const getAll = async (req, res) => {
              ae.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
-             u.nombre as transportista_nombre,
-             u.apellido as transportista_apellido,
+             u.name as transportista_nombre,
+             u.email as transportista_email,
              v.placa as vehiculo_placa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
-      LEFT JOIN asignaciones_envio ae ON e.id = ae.envio_id
-      LEFT JOIN transportistas t ON ae.transportista_id = t.id
-      LEFT JOIN usuarios u ON t.usuario_id = u.id
+      LEFT JOIN envio_asignaciones ae ON e.id = ae.envio_id
+      LEFT JOIN users u ON ae.transportista_id = u.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       ORDER BY e.created_at DESC
     `);
@@ -45,14 +44,15 @@ const getById = async (req, res) => {
              ae.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
-             u.nombre as transportista_nombre,
-             u.apellido as transportista_apellido,
+             ae.fecha_aceptacion,
+             ae.observaciones as firma_transportista,
+             u.name as transportista_nombre,
+             u.email as transportista_email,
              v.placa as vehiculo_placa
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
-      LEFT JOIN asignaciones_envio ae ON e.id = ae.envio_id
-      LEFT JOIN transportistas t ON ae.transportista_id = t.id
-      LEFT JOIN usuarios u ON t.usuario_id = u.id
+      LEFT JOIN envio_asignaciones ae ON e.id = ae.envio_id
+      LEFT JOIN users u ON ae.transportista_id = u.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       WHERE e.id = $1
     `, [id]);
@@ -337,13 +337,24 @@ const aceptarAsignacion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verificar que el envío existe y obtener su estado
-    const envioCheck = await pool.query('SELECT estado FROM envios WHERE id = $1', [id]);
+    // Verificar que el envío existe y obtener su estado con info del transportista
+    const envioCheck = await pool.query(`
+      SELECT e.estado, 
+             ea.transportista_id,
+             u.name as transportista_nombre,
+             u.email as transportista_email
+      FROM envios e
+      LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
+      LEFT JOIN users u ON ea.transportista_id = u.id
+      WHERE e.id = $1
+    `, [id]);
+    
     if (envioCheck.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Envío no encontrado' });
     }
 
-    const estadoActual = envioCheck.rows[0].estado;
+    const envioData = envioCheck.rows[0];
+    const estadoActual = envioData.estado;
 
     // Si ya está aceptado, devolver mensaje apropiado
     if (estadoActual === 'aceptado') {
@@ -371,17 +382,28 @@ const aceptarAsignacion = async (req, res) => {
       RETURNING *
     `, [id]);
 
-    // Actualizar fecha_aceptacion en envio_asignaciones
+    // Actualizar fecha_aceptacion y observaciones con firma en envio_asignaciones
+    const firmaTexto = `Firma Digital: ${envioData.transportista_nombre} - ${envioData.transportista_email}\nAceptado el: ${new Date().toLocaleString('es-ES')}`;
+    
     await pool.query(`
       UPDATE envio_asignaciones
-      SET fecha_aceptacion = CURRENT_TIMESTAMP
+      SET fecha_aceptacion = CURRENT_TIMESTAMP,
+          observaciones = COALESCE(observaciones || E'\n\n', '') || $2
       WHERE envio_id = $1
-    `, [id]);
+    `, [id, firmaTexto]);
+
+    console.log(`✅ Envío ${id} aceptado por ${envioData.transportista_nombre}`);
+    console.log(`📝 Firma registrada: ${firmaTexto}`);
 
     res.json({
       success: true,
       message: 'Envío aceptado correctamente',
-      envio: result.rows[0]
+      envio: result.rows[0],
+      firma: firmaTexto,
+      transportista: {
+        nombre: envioData.transportista_nombre,
+        email: envioData.transportista_email
+      }
     });
   } catch (error) {
     console.error('Error al aceptar asignación:', error);
@@ -444,7 +466,7 @@ const getByTransportista = async (req, res) => {
              ae.fecha_asignacion,
              v.placa as vehiculo_placa
       FROM envios e
-      INNER JOIN asignaciones_envio ae ON e.id = ae.envio_id
+      INNER JOIN envio_asignaciones ae ON e.id = ae.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       WHERE ae.transportista_id = $1

@@ -20,40 +20,21 @@ export default function EnviosScreen({ navigation }) {
   const cargarEnvios = async () => {
     try {
       setLoading(true);
-      let data = [];
+      let data;
       
       if (esTransportista) {
         // Cargar envíos asignados al transportista
-        console.log('🔍 Cargando envíos para transportista ID:', userInfo.id);
-        try {
-          const response = await envioService.getByTransportista(userInfo.id);
-          console.log('✅ Respuesta del servidor:', response);
-          data = response.success ? response.data : (response.data || response);
-        } catch (apiError) {
-          console.error('❌ Error de API:', apiError.response?.status, apiError.response?.data);
-          // Si es 404 o no hay envíos, simplemente mostrar vacío
-          if (apiError.response?.status === 404 || apiError.response?.status === 500) {
-            data = [];
-          } else {
-            throw apiError;
-          }
-        }
+        data = await envioService.getByTransportista(userInfo.id);
       } else {
         // Cargar envíos del almacén
         data = await envioService.getAll(userInfo.id);
       }
       
-      // Asegurarse de que data sea un array
-      const enviosArray = Array.isArray(data) ? data : [];
-      console.log(`📦 Envíos cargados para transportista ${userInfo.id}:`, enviosArray.length);
-      
-      setEnvios(enviosArray);
-      aplicarFiltros(enviosArray, filtroEstado, searchQuery);
+      setEnvios(data);
+      aplicarFiltros(data, filtroEstado, searchQuery);
     } catch (error) {
-      console.error('❌ Error al cargar envíos:', error);
-      // No mostrar alerta si simplemente no hay envíos
-      setEnvios([]);
-      setEnviosFiltrados([]);
+      console.error('Error al cargar envíos:', error);
+      Alert.alert('Error', 'No se pudieron cargar los envíos');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -104,12 +85,12 @@ export default function EnviosScreen({ navigation }) {
           text: 'Aceptar',
           onPress: async () => {
             try {
-              const response = await envioService.aceptarEnvio(envioId);
-              Alert.alert('✅ Éxito', 'Envío aceptado. Ya puedes ver la ruta y simulación.');
+              await envioService.aceptarAsignacion(envioId);
+              Alert.alert('Éxito', 'Envío aceptado. Ya puedes iniciarlo.');
               cargarEnvios();
             } catch (error) {
               console.error('Error al aceptar:', error);
-              Alert.alert('Error', error.response?.data?.error || 'No se pudo aceptar el envío');
+              Alert.alert('Error', 'No se pudo aceptar el envío');
             }
           },
         },
@@ -128,12 +109,12 @@ export default function EnviosScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await envioService.rechazarEnvio(envioId);
-              Alert.alert('✅ Rechazado', 'El envío fue rechazado y volverá a estar disponible.');
+              await envioService.rechazarAsignacion(envioId, 'No disponible');
+              Alert.alert('Rechazado', 'El envío fue rechazado.');
               cargarEnvios();
             } catch (error) {
               console.error('Error al rechazar:', error);
-              Alert.alert('Error', error.response?.data?.error || 'No se pudo rechazar el envío');
+              Alert.alert('Error', 'No se pudo rechazar el envío');
             }
           },
         },
@@ -200,36 +181,6 @@ export default function EnviosScreen({ navigation }) {
     return textos[estado] || estado;
   };
 
-  // Calcular duración del viaje
-  const calcularDuracionViaje = (fechaInicio, fechaEntrega) => {
-    if (!fechaInicio || !fechaEntrega) return null;
-    
-    try {
-      const inicio = new Date(fechaInicio);
-      const entrega = new Date(fechaEntrega);
-      const diferenciaMilisegundos = entrega - inicio;
-      
-      if (diferenciaMilisegundos < 0) return null;
-      
-      const minutos = Math.floor(diferenciaMilisegundos / 1000 / 60);
-      const horas = Math.floor(minutos / 60);
-      const dias = Math.floor(horas / 24);
-      
-      if (dias > 0) {
-        const horasRestantes = horas % 24;
-        return `${dias}d ${horasRestantes}h`;
-      } else if (horas > 0) {
-        const minutosRestantes = minutos % 60;
-        return `${horas}h ${minutosRestantes}m`;
-      } else {
-        return `${minutos}m`;
-      }
-    } catch (error) {
-      console.error('Error calculando duración:', error);
-      return null;
-    }
-  };
-
   const verQR = (envioId) => {
     navigation.navigate('QRView', { envioId });
   };
@@ -277,27 +228,6 @@ export default function EnviosScreen({ navigation }) {
             {item.fecha_estimada_entrega ? new Date(item.fecha_estimada_entrega).toLocaleDateString() : 'N/A'}
           </Text>
         </View>
-
-        {/* Duración del viaje para envíos entregados */}
-        {item.estado === 'entregado' && item.fecha_inicio_transito && item.fecha_entrega && (
-          <View style={styles.infoRow}>
-            <Icon name="clock-outline" size={20} color="#4CAF50" />
-            <Text style={[styles.infoText, { color: '#4CAF50', fontWeight: 'bold' }]}>
-              Duración: {calcularDuracionViaje(item.fecha_inicio_transito, item.fecha_entrega)}
-            </Text>
-          </View>
-        )}
-
-        {/* Información del transportista (solo para usuarios de almacén) */}
-        {!esTransportista && item.transportista_nombre && (
-          <View style={styles.infoRow}>
-            <Icon name="account" size={20} color="#2196F3" />
-            <Text style={styles.infoText}>
-              Transportista: {item.transportista_nombre} {item.transportista_apellido || ''}
-              {item.vehiculo_placa && ` • 🚚 ${item.vehiculo_placa}`}
-            </Text>
-          </View>
-        )}
 
         <View style={styles.divider} />
 
@@ -347,15 +277,27 @@ export default function EnviosScreen({ navigation }) {
               </View>
             )}
 
-            {(item.estado === 'aceptado' || item.estado === 'en_transito') && (
+            {item.estado === 'aceptado' && (
               <Button 
                 mode="contained" 
-                onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
-                icon="truck-fast"
+                onPress={() => navigation.navigate('MapaEnvio', { envioId: item.id })}
+                icon="map-marker-radius"
                 style={styles.actionButton}
-                buttonColor="#9C27B0"
+                buttonColor="#00BCD4"
               >
-                Iniciar Simulación de Ruta
+                Ver Ubicación en Mapa
+              </Button>
+            )}
+
+            {item.estado === 'en_transito' && (
+              <Button 
+                mode="outlined" 
+                onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                icon="map-marker-path"
+                style={styles.actionButton}
+                textColor="#9C27B0"
+              >
+                Ver Seguimiento
               </Button>
             )}
           </View>
@@ -396,7 +338,7 @@ export default function EnviosScreen({ navigation }) {
             ? [
                 { value: 'asignado', label: 'Asignados' },
                 { value: 'aceptado', label: 'Aceptados' },
-                { value: 'entregado', label: 'Entregados' },
+                { value: 'en_transito', label: 'En Ruta' },
               ]
             : [
                 { value: 'pendiente', label: 'Pendientes' },
@@ -418,21 +360,12 @@ export default function EnviosScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#4CAF50']} />
         }
         ListEmptyComponent={
-          !loading && (
-            <View style={styles.centerContainer}>
-              <Icon name="inbox" size={64} color="#999" />
-              <Text style={styles.emptyText}>
-                {esTransportista 
-                  ? 'Por el momento no tienes envíos asignados' 
-                  : 'No hay envíos disponibles'}
-              </Text>
-              <Text style={styles.emptySubtext}>
-                {esTransportista 
-                  ? 'Los envíos aparecerán aquí cuando te los asignen' 
-                  : 'Crea un nuevo envío para comenzar'}
-              </Text>
-            </View>
-          )
+          <View style={styles.centerContainer}>
+            <Icon name="inbox" size={60} color="#999" />
+            <Text style={styles.emptyText}>
+              {loading ? 'Cargando envíos...' : 'No hay envíos disponibles'}
+            </Text>
+          </View>
         }
       />
 

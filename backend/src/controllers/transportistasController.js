@@ -143,16 +143,15 @@ const getEnviosAsignados = async (req, res) => {
     
     const result = await pool.query(`
       SELECT e.*, 
-             ee.nombre as estado_nombre, ee.color as estado_color,
-             d.nombre as direccion_nombre, d.direccion_completa, d.latitud, d.longitud,
-             a.nombre as almacen_nombre
+             a.nombre as almacen_nombre,
+             a.direccion_completa,
+             a.latitud,
+             a.longitud
       FROM envios e
-      LEFT JOIN asignaciones_envio ae ON e.id = ae.envio_id
-      LEFT JOIN estados_envio ee ON e.estado_id = ee.id
-      LEFT JOIN direcciones d ON e.direccion_destino_id = d.id
+      LEFT JOIN envio_asignaciones ae ON e.id = ae.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       WHERE ae.transportista_id = $1
-      ORDER BY e.fecha_programada DESC
+      ORDER BY e.fecha_estimada_entrega DESC
     `, [id]);
 
     res.json(result.rows);

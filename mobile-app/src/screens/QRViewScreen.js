@@ -415,8 +415,53 @@ export default function QRViewScreen({ route, navigation }) {
           </Card>
         )}
 
+        {/* Firma del Transportista */}
+        {(envio.estado === 'aceptado' || envio.estado === 'en_transito' || envio.estado === 'entregado') && envio.firma_transportista && (
+          <Card style={styles.card}>
+            <Card.Title 
+              title="Firma de Transporte"
+              left={(props) => <Icon name="file-sign" {...props} size={24} color="#4CAF50" />}
+            />
+            <Card.Content>
+              <View style={styles.firmaContainer}>
+                <Icon name="check-decagram" size={48} color="#4CAF50" />
+                <Text variant="titleMedium" style={styles.firmaTitle}>
+                  Documento Firmado Digitalmente
+                </Text>
+                <Divider style={styles.divider} />
+                <Text style={styles.firmaText}>{envio.firma_transportista}</Text>
+                {envio.transportista_nombre && (
+                  <>
+                    <Divider style={styles.divider} />
+                    <View style={styles.infoRow}>
+                      <Icon name="account" size={20} color="#666" />
+                      <View style={styles.infoContent}>
+                        <Text variant="bodySmall" style={styles.infoLabel}>Transportista</Text>
+                        <Text variant="bodyMedium" style={styles.infoValue}>
+                          {envio.transportista_nombre}
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                )}
+                {envio.fecha_aceptacion && (
+                  <View style={styles.infoRow}>
+                    <Icon name="calendar-check" size={20} color="#666" />
+                    <View style={styles.infoContent}>
+                      <Text variant="bodySmall" style={styles.infoLabel}>Fecha de Aceptación</Text>
+                      <Text variant="bodyMedium" style={styles.infoValue}>
+                        {new Date(envio.fecha_aceptacion).toLocaleString('es-ES')}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </Card.Content>
+          </Card>
+        )}
+
         {/* Observaciones */}
-        {envio.observaciones && (
+        {envio.observaciones && !envio.firma_transportista && (
           <Card style={styles.card}>
             <Card.Title 
               title="Observaciones"
@@ -795,5 +840,26 @@ const styles = StyleSheet.create({
   },
   documentoSubtitle: {
     color: '#1565C0',
+  },
+  firmaContainer: {
+    backgroundColor: '#E8F5E9',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  firmaTitle: {
+    color: '#2E7D32',
+    fontWeight: 'bold',
+    marginTop: 10,
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  firmaText: {
+    color: '#666',
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingVertical: 10,
   },
 });

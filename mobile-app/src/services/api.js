@@ -2,11 +2,12 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// URL del backend - AHORA CONECTADO A LARAVEL (puerto 8000)
-// IMPORTANTE: Asegúrate de que Laravel esté corriendo con: php artisan serve --host=0.0.0.0 --port=8000
+// URL del backend - CONECTADO A NODE.JS (puerto 3000)
+// Node.js consulta PostgreSQL (misma BD que usa Laravel)
+// IMPORTANTE: Asegúrate de que Node.js esté corriendo en puerto 3000
 export const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:3000/api'  // Para web
-  : 'http://10.26.5.55:3000/api'; // IP de tu PC en red local - LARAVEL (ACTUALIZADA)
+  : 'http://192.168.0.129:3000/api'; // IP de tu PC en red local (ACTUALIZADA)
 
 const api = axios.create({
   baseURL: API_URL,
@@ -94,7 +95,8 @@ export const envioService = {
     const response = await api.get('/envios', {
       params: { almacen_id }
     });
-    return response.data;
+    // La API devuelve directamente el array
+    return Array.isArray(response.data) ? response.data : (response.data.data || response.data);
   },
 
   getById: async (id) => {
@@ -149,6 +151,18 @@ export const envioService = {
 
   getByTransportista: async (transportistaId) => {
     const response = await api.get(`/envios/transportista/${transportistaId}`);
+    // La API devuelve {success: true, data: [...]}
+    return response.data.data || response.data;
+  },
+
+  // Alias para compatibilidad con EnviosScreen
+  aceptarAsignacion: async (id) => {
+    const response = await api.post(`/envios/${id}/aceptar`);
+    return response.data;
+  },
+
+  rechazarAsignacion: async (id, motivo) => {
+    const response = await api.post(`/envios/${id}/rechazar`, { motivo });
     return response.data;
   },
 };
