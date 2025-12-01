@@ -12,6 +12,7 @@ const syncRoutes = require('./sync');
 const publicRoutes = require('./public');
 const notasVentaRoutes = require('./notasVenta');
 const almacenAppRoutes = require('./almacenApp');
+const iaRoutes = require('./ia');
 
 // Rutas públicas
 router.use('/auth', authRoutes);
@@ -25,6 +26,9 @@ router.use('/notas-venta', notasVentaRoutes);
 
 // Rutas específicas para app móvil de almacén (sin auth)
 router.use('/almacen-app', almacenAppRoutes);
+
+// Rutas de IA (públicas)
+router.use('/ia', iaRoutes);
 
 // Rutas protegidas
 router.use('/usuarios', usuariosRoutes);

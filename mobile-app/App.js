@@ -32,6 +32,7 @@ import DocumentoEnvioScreen from './src/screens/DocumentoEnvioScreen';
 import AlmacenEnviosScreen from './src/screens/AlmacenEnviosScreen';
 import AlmacenNotasVentaScreen from './src/screens/AlmacenNotasVentaScreen';
 import AlmacenEstadisticasScreen from './src/screens/AlmacenEstadisticasScreen';
+import AlmacenIAScreen from './src/screens/AlmacenIAScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -123,6 +124,8 @@ function AlmacenTabs() {
               iconName = 'receipt';
             } else if (route.name === 'Estadisticas') {
               iconName = 'chart-box';
+            } else if (route.name === 'IA') {
+              iconName = 'brain';
             } else if (route.name === 'Perfil') {
               iconName = 'account';
             }
@@ -147,6 +150,11 @@ function AlmacenTabs() {
         name="Estadisticas" 
         component={AlmacenEstadisticasScreen}
         options={{ title: 'Estadísticas', headerShown: true, headerTitle: '📊 Estadísticas' }}
+      />
+      <Tab.Screen 
+        name="IA" 
+        component={AlmacenIAScreen}
+        options={{ title: 'IA', headerShown: true, headerTitle: '🧠 Inteligencia Artificial' }}
       />
       <Tab.Screen 
         name="Perfil" 
