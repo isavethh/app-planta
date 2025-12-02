@@ -20,51 +20,74 @@ export default function TrackingScreen({ route, navigation }) {
   const [socketConectado, setSocketConectado] = useState(false);
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
+  const simulandoRef = useRef(false); // Ref para evitar stale closure
 
   useEffect(() => {
     cargarDatos();
-    conectarSocket();
+    
+    // Conectar socket con delay para evitar errores
+    const socketTimer = setTimeout(() => {
+      conectarSocket();
+    }, 500);
     
     return () => {
+      clearTimeout(socketTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
-      socketService.off('posicion-actualizada');
-      socketService.off('simulacion-iniciada');
-      socketService.off('envio-completado');
+      try {
+        socketService.off('posicion-actualizada');
+        socketService.off('simulacion-iniciada');
+        socketService.off('envio-completado');
+      } catch (e) {
+        console.warn('[TrackingScreen] Error limpiando listeners:', e);
+      }
     };
   }, []);
 
   const conectarSocket = () => {
     try {
       socketService.connect();
-      setSocketConectado(socketService.isConnected());
       
-      // Unirse a la sala del envío
-      socketService.joinEnvio(envioId);
-      
-      // Escuchar actualizaciones de posición (para recibir de otros clientes)
-      socketService.onPosicionActualizada((data) => {
-        if (data.envioId == envioId) {
-          console.log(`📍 [Socket] Recibido posición: ${Math.round(data.progreso * 100)}%`);
+      // Esperar un momento para que se conecte
+      setTimeout(() => {
+        setSocketConectado(socketService.isConnected());
+        
+        // Unirse a la sala del envío
+        if (envioId) {
+          socketService.joinEnvio(envioId);
         }
-      });
-      
-      // Escuchar cuando otra instancia inicia simulación
-      socketService.onSimulacionIniciada((data) => {
-        if (data.envioId == envioId && !simulando) {
-          console.log(`🚚 [Socket] Simulación iniciada remotamente`);
-          // Iniciar animación local sincronizada
-          if (data.rutaPuntos && data.rutaPuntos.length > 0) {
-            const puntos = data.rutaPuntos.map(p => ({
-              latitude: p.latitude || p.lat,
-              longitude: p.longitude || p.lng
-            }));
-            setRutaReal(puntos);
-            animarCamionSincronizado(puntos, 60000);
+        
+        // Escuchar actualizaciones de posición
+        socketService.onPosicionActualizada((data) => {
+          try {
+            if (data && data.envioId == envioId) {
+              console.log(`📍 [Socket] Recibido posición: ${Math.round((data.progreso || 0) * 100)}%`);
+            }
+          } catch (e) {
+            console.warn('[Socket] Error procesando posición:', e);
           }
-        }
-      });
-      
-      console.log('✅ [TrackingScreen] Socket conectado y escuchando');
+        });
+        
+        // Escuchar cuando otra instancia inicia simulación
+        socketService.onSimulacionIniciada((data) => {
+          try {
+            if (data && data.envioId == envioId && !simulandoRef.current) {
+              console.log(`🚚 [Socket] Simulación iniciada remotamente`);
+              if (data.rutaPuntos && data.rutaPuntos.length > 0) {
+                const puntos = data.rutaPuntos.map(p => ({
+                  latitude: p.latitude || p.lat || 0,
+                  longitude: p.longitude || p.lng || 0
+                }));
+                setRutaReal(puntos);
+                animarCamionSincronizado(puntos, 60000);
+              }
+            }
+          } catch (e) {
+            console.warn('[Socket] Error procesando simulación:', e);
+          }
+        });
+        
+        console.log('✅ [TrackingScreen] Socket configurado');
+      }, 1000);
     } catch (error) {
       console.warn('⚠️ [TrackingScreen] Error conectando socket:', error);
     }
@@ -182,61 +205,127 @@ export default function TrackingScreen({ route, navigation }) {
 
   const handleIniciarSimulacion = async () => {
     try {
-      console.log('[TrackingScreen] Iniciando simulación con ruta real...');
+      console.log('[TrackingScreen] Iniciando simulación...');
       setSimulando(true);
+      simulandoRef.current = true;
 
-      // PRIMERO: Notificar al backend para que Laravel también muestre la simulación
-      console.log('[TrackingScreen] Notificando al backend para sincronizar con Laravel...');
-      try {
-        await envioService.simularMovimiento(envioId);
-        console.log('[TrackingScreen] ✅ Backend notificado - Laravel puede ver el tracking');
-      } catch (backendError) {
-        console.warn('[TrackingScreen] ⚠️ No se pudo notificar al backend:', backendError.message);
-      }
-
-      const origen = {
-        latitude: parseFloat(envio.origen_latitud) || -17.7833,
-        longitude: parseFloat(envio.origen_longitud) || -63.1821,
-      };
-
-      const destino = {
-        latitude: parseFloat(envio.destino_latitud) || -17.7892,
-        longitude: parseFloat(envio.destino_longitud) || -63.1751,
-      };
-
-      // Obtener ruta real de Google Directions
-      const puntosRuta = await obtenerRutaReal(origen, destino);
-
-      if (puntosRuta.length === 0) {
-        Alert.alert('⚠️ Error', 'No se pudo obtener la ruta desde Google Maps');
+      // Validar que tenemos datos del envío
+      if (!envio) {
+        Alert.alert('⚠️ Error', 'No hay datos del envío');
         setSimulando(false);
+        simulandoRef.current = false;
         return;
       }
 
-      setRutaReal(puntosRuta);
+      // PRIMERO: Llamar al backend para generar los puntos de la ruta
+      // El backend genera 16 puntos y los guarda en la BD
+      console.log('[TrackingScreen] Obteniendo puntos de ruta del backend...');
+      let puntosBackend = [];
+      try {
+        const simResponse = await envioService.simularMovimiento(envioId);
+        console.log('[TrackingScreen] ✅ Respuesta del backend:', simResponse);
+        
+        if (simResponse.puntos && simResponse.puntos.length > 0) {
+          // Convertir los puntos del backend al formato de la app
+          puntosBackend = simResponse.puntos.map(p => ({
+            latitude: parseFloat(p.latitud),
+            longitude: parseFloat(p.longitud)
+          }));
+          console.log(`[TrackingScreen] ✅ ${puntosBackend.length} puntos obtenidos del backend`);
+          
+          // Guardar info de distancia/duración estimada
+          if (simResponse.origen && simResponse.destino) {
+            const distKm = calcularDistancia(
+              simResponse.origen.lat, simResponse.origen.lng,
+              simResponse.destino.lat, simResponse.destino.lng
+            );
+            setDistanciaTotal(`${distKm.toFixed(1)} km`);
+            setDuracionTotal('~1 min (simulación)');
+          }
+        }
+      } catch (backendError) {
+        console.warn('[TrackingScreen] ⚠️ Error obteniendo puntos del backend:', backendError.message);
+      }
+
+      // Si no hay puntos del backend, crear ruta interpolada
+      if (puntosBackend.length === 0) {
+        console.warn('[TrackingScreen] Usando ruta interpolada como fallback');
+        const origen = {
+          latitude: parseFloat(envio.origen_latitud) || -17.7833,
+          longitude: parseFloat(envio.origen_longitud) || -63.1821,
+        };
+        const destino = {
+          latitude: parseFloat(envio.destino_latitud) || -17.7892,
+          longitude: parseFloat(envio.destino_longitud) || -63.1751,
+        };
+        puntosBackend = crearRutaInterpolada(origen, destino, 15);
+      }
+
+      if (puntosBackend.length === 0) {
+        Alert.alert('⚠️ Error', 'No se pudo crear la ruta');
+        setSimulando(false);
+        simulandoRef.current = false;
+        return;
+      }
+
+      setRutaReal(puntosBackend);
       setIndicePuntoActual(0);
 
       // Ajustar mapa para mostrar toda la ruta
-      if (mapRef.current && puntosRuta.length > 0) {
-        mapRef.current.fitToCoordinates(puntosRuta, {
-          edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
-          animated: true,
-        });
+      if (mapRef.current && puntosBackend.length > 0) {
+        try {
+          mapRef.current.fitToCoordinates(puntosBackend, {
+            edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
+            animated: true,
+          });
+        } catch (e) {
+          console.warn('[TrackingScreen] Error ajustando mapa:', e);
+        }
       }
 
       const duracionMs = 60000; // 1 minuto
 
       // ENVIAR por WebSocket para sincronizar con Laravel
-      socketService.iniciarSimulacion(envioId, puntosRuta);
-      console.log('[TrackingScreen] 📡 Simulación enviada por WebSocket');
+      try {
+        socketService.iniciarSimulacion(envioId, puntosBackend);
+        console.log('[TrackingScreen] 📡 Simulación enviada por WebSocket');
+      } catch (socketError) {
+        console.warn('[TrackingScreen] ⚠️ No se pudo enviar por WebSocket:', socketError);
+      }
 
-      // Animar el camión siguiendo la ruta real
-      animarCamionRutaReal(puntosRuta, duracionMs);
+      // Animar el camión siguiendo la ruta
+      animarCamionRutaReal(puntosBackend, duracionMs);
     } catch (error) {
       console.error('❌ [TrackingScreen] Error en simulación:', error);
-      Alert.alert('❌ Error', `No se pudo iniciar la simulación.\n\nDetalle: ${error.message}`);
+      Alert.alert('❌ Error', `No se pudo iniciar la simulación.\n\nDetalle: ${error?.message || 'Error desconocido'}`);
       setSimulando(false);
+      simulandoRef.current = false;
     }
+  };
+
+  // Calcular distancia entre dos puntos (fórmula Haversine simplificada)
+  const calcularDistancia = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radio de la Tierra en km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Crear ruta interpolada cuando Google Directions falla
+  const crearRutaInterpolada = (origen, destino, numPuntos) => {
+    const puntos = [];
+    for (let i = 0; i <= numPuntos; i++) {
+      const t = i / numPuntos;
+      puntos.push({
+        latitude: origen.latitude + (destino.latitude - origen.latitude) * t,
+        longitude: origen.longitude + (destino.longitude - origen.longitude) * t,
+      });
+    }
+    return puntos;
   };
 
   // Animación sincronizada cuando se recibe de otro cliente
@@ -244,6 +333,7 @@ export default function TrackingScreen({ route, navigation }) {
     if (!puntos || puntos.length === 0) return;
     
     setSimulando(true);
+    simulandoRef.current = true;
     setIndicePuntoActual(0);
     
     const intervaloMs = duracionMs / puntos.length;
@@ -253,6 +343,7 @@ export default function TrackingScreen({ route, navigation }) {
       if (indice >= puntos.length - 1) {
         clearInterval(intervalRef.current);
         setSimulando(false);
+        simulandoRef.current = false;
         setIndicePuntoActual(puntos.length - 1);
         return;
       }
@@ -266,6 +357,7 @@ export default function TrackingScreen({ route, navigation }) {
     if (!puntos || puntos.length === 0) {
       console.warn('[TrackingScreen] No hay puntos para animar');
       setSimulando(false);
+      simulandoRef.current = false;
       return;
     }
 
@@ -282,10 +374,15 @@ export default function TrackingScreen({ route, navigation }) {
           console.log('[TrackingScreen] Animación completada');
           clearInterval(intervalRef.current);
           setSimulando(false);
+          simulandoRef.current = false;
           setIndicePuntoActual(puntos.length - 1);
           
-          // Notificar por socket que terminó
-          socketService.completarEnvio(envioId);
+          // Notificar por socket que terminó (con try-catch)
+          try {
+            socketService.completarEnvio(envioId);
+          } catch (e) {
+            console.warn('[TrackingScreen] Error notificando completado:', e);
+          }
           
           // Auto-marcar como entregado
           marcarComoEntregado();
@@ -296,17 +393,27 @@ export default function TrackingScreen({ route, navigation }) {
         
         // Enviar posición por WebSocket para sincronizar con Laravel
         const punto = puntos[indice];
-        const progreso = indice / puntos.length;
-        socketService.enviarPosicion(envioId, { latitude: punto.latitude, longitude: punto.longitude }, progreso);
+        if (punto && punto.latitude && punto.longitude) {
+          const progreso = indice / puntos.length;
+          try {
+            socketService.enviarPosicion(envioId, { latitude: punto.latitude, longitude: punto.longitude }, progreso);
+          } catch (e) {
+            // Silenciar errores de socket para no interrumpir la animación
+          }
+        }
 
         // Centrar mapa en el punto actual
-        if (mapRef.current && puntos[indice]) {
-          mapRef.current.animateToRegion({
-            latitude: puntos[indice].latitude,
-            longitude: puntos[indice].longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, intervaloMs * 0.8);
+        if (mapRef.current && punto) {
+          try {
+            mapRef.current.animateToRegion({
+              latitude: punto.latitude,
+              longitude: punto.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }, Math.min(intervaloMs * 0.8, 500));
+          } catch (e) {
+            // Ignorar errores de animación del mapa
+          }
         }
 
         indice++;
@@ -314,6 +421,7 @@ export default function TrackingScreen({ route, navigation }) {
         console.error('[TrackingScreen] Error en animación:', error);
         clearInterval(intervalRef.current);
         setSimulando(false);
+        simulandoRef.current = false;
       }
     }, intervaloMs);
   };
@@ -577,7 +685,7 @@ export default function TrackingScreen({ route, navigation }) {
                 Iniciar Simulación de Ruta
               </Button>
               <Text variant="bodySmall" style={styles.buttonHint}>
-                La simulación usará rutas reales de Google Maps y mostrará el recorrido del camión en tiempo real.
+                La simulación usa la misma ruta que ve el panel web y mostrará el recorrido del camión en tiempo real.
               </Text>
             </>
           ) : simulando ? (

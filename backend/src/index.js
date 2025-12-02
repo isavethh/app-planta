@@ -86,19 +86,14 @@ trackingNamespace.on('connection', (socket) => {
   socket.on('iniciar-simulacion', (data) => {
     console.log(`🚚 Simulación iniciada para envío ${data.envioId} con ${data.rutaPuntos?.length || 0} puntos`);
     
-    // Emitir a TODOS los clientes conectados al namespace tracking
-    trackingNamespace.emit('simulacion-iniciada', {
+    const payload = {
       envioId: data.envioId,
       rutaPuntos: data.rutaPuntos,
       timestamp: new Date().toISOString()
-    });
+    };
     
-    // También emitir a la sala específica del envío
-    socket.to(`envio-${data.envioId}`).emit('simulacion-iniciada', {
-      envioId: data.envioId,
-      rutaPuntos: data.rutaPuntos,
-      timestamp: new Date().toISOString()
-    });
+    // Emitir a TODOS los clientes del namespace tracking
+    trackingNamespace.emit('simulacion-iniciada', payload);
   });
   
   // Recibir actualización de posición desde la app móvil
@@ -106,16 +101,8 @@ trackingNamespace.on('connection', (socket) => {
     const progreso = data.progreso || 0;
     console.log(`📍 Posición envío ${data.envioId}: lat=${data.posicion?.latitude?.toFixed(6)}, lng=${data.posicion?.longitude?.toFixed(6)} (${Math.round(progreso * 100)}%)`);
     
-    // Emitir a TODOS los clientes conectados al namespace tracking
+    // Emitir a TODOS los clientes del namespace tracking
     trackingNamespace.emit('posicion-actualizada', {
-      envioId: data.envioId,
-      posicion: data.posicion,
-      progreso: data.progreso,
-      timestamp: new Date().toISOString()
-    });
-    
-    // También emitir a la sala específica del envío
-    socket.to(`envio-${data.envioId}`).emit('posicion-actualizada', {
       envioId: data.envioId,
       posicion: data.posicion,
       progreso: data.progreso,

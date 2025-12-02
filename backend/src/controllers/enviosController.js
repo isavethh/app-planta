@@ -41,6 +41,10 @@ const getById = async (req, res) => {
              a.direccion_completa,
              a.latitud,
              a.longitud,
+             a.latitud as destino_latitud,
+             a.longitud as destino_longitud,
+             -17.7833 as origen_latitud,
+             -63.1821 as origen_longitud,
              ae.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
@@ -214,9 +218,9 @@ const simularMovimiento = async (req, res) => {
     const destino_lat = parseFloat(envio.destino_lat) || -17.7892;
     const destino_lng = parseFloat(envio.destino_lng) || -63.1751;
 
-    if (!envio.origen_lat || !envio.destino_lat) {
-      console.warn('⚠️ Usando coordenadas por defecto para simulación');
-    }
+    console.log(`🗺️ Obteniendo ruta real para envío ${id}...`);
+    console.log(`   Origen: ${origen_lat}, ${origen_lng}`);
+    console.log(`   Destino: ${destino_lat}, ${destino_lng}`);
 
     // Actualizar estado a en_transito si aún no lo está
     await pool.query(
@@ -231,21 +235,66 @@ const simularMovimiento = async (req, res) => {
       console.warn('No se pudo limpiar seguimiento previo:', err.message);
     }
 
-    // Simular puntos de ruta (15 puntos para mejor visualización)
-    const puntos = [];
-    const pasos = 15;
+    // Obtener ruta real usando OSRM (Open Source Routing Machine) - API gratuita
+    let puntos = [];
+    try {
+      const fetch = require('node-fetch');
+      // OSRM espera coordenadas en formato lng,lat (inverso a lo normal)
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origen_lng},${origen_lat};${destino_lng},${destino_lat}?overview=full&geometries=geojson`;
+      
+      console.log(`🌐 Consultando OSRM: ${osrmUrl}`);
+      const response = await fetch(osrmUrl, { timeout: 10000 });
+      const data = await response.json();
 
-    for (let i = 0; i <= pasos; i++) {
-      const ratio = i / pasos;
-      const lat = origen_lat + (destino_lat - origen_lat) * ratio;
-      const lng = origen_lng + (destino_lng - origen_lng) * ratio;
-      const velocidad = 30 + Math.random() * 20; // 30-50 km/h
+      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const coordinates = data.routes[0].geometry.coordinates;
+        console.log(`✅ OSRM devolvió ${coordinates.length} puntos de ruta`);
 
-      puntos.push({ 
-        latitud: lat, 
-        longitud: lng, 
-        velocidad: velocidad.toFixed(2) 
-      });
+        // Reducir puntos si son demasiados (para animación más suave)
+        // Tomamos máximo 50 puntos distribuidos uniformemente
+        const maxPuntos = 50;
+        const step = Math.max(1, Math.floor(coordinates.length / maxPuntos));
+        
+        for (let i = 0; i < coordinates.length; i += step) {
+          const coord = coordinates[i];
+          // OSRM devuelve [lng, lat], convertimos a lat, lng
+          puntos.push({
+            latitud: coord[1],
+            longitud: coord[0],
+            velocidad: (30 + Math.random() * 20).toFixed(2)
+          });
+        }
+        
+        // Asegurar que el último punto sea el destino exacto
+        const lastCoord = coordinates[coordinates.length - 1];
+        if (puntos.length > 0) {
+          puntos[puntos.length - 1] = {
+            latitud: lastCoord[1],
+            longitud: lastCoord[0],
+            velocidad: '0.00'
+          };
+        }
+
+        console.log(`📍 Ruta optimizada a ${puntos.length} puntos`);
+      } else {
+        console.warn('⚠️ OSRM no devolvió ruta válida, usando interpolación');
+      }
+    } catch (osrmError) {
+      console.warn('⚠️ Error consultando OSRM:', osrmError.message);
+    }
+
+    // Fallback: Si OSRM falla, crear ruta interpolada
+    if (puntos.length === 0) {
+      console.log('📍 Usando ruta interpolada como fallback');
+      const pasos = 20;
+      for (let i = 0; i <= pasos; i++) {
+        const ratio = i / pasos;
+        puntos.push({
+          latitud: origen_lat + (destino_lat - origen_lat) * ratio,
+          longitud: origen_lng + (destino_lng - origen_lng) * ratio,
+          velocidad: (30 + Math.random() * 20).toFixed(2)
+        });
+      }
     }
 
     // Guardar puntos en la base de datos
@@ -265,9 +314,10 @@ const simularMovimiento = async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Simulación de ruta creada correctamente',
+      message: 'Ruta real obtenida correctamente',
       puntos,
       puntosGuardados,
+      rutaReal: puntos.length > 20, // Indica si es ruta real o interpolada
       origen: { lat: origen_lat, lng: origen_lng },
       destino: { lat: destino_lat, lng: destino_lng }
     });
