@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Alert, Share } from 'react-native';
+import { View, StyleSheet, Alert, Share, StatusBar, Platform } from 'react-native';
 import { Appbar } from 'react-native-paper';
 import { WebView } from 'react-native-webview';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 export default function DocumentoEnvioScreen({ route, navigation }) {
   const { documentURL, codigo } = route.params || {};
@@ -152,6 +154,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+    paddingTop: STATUSBAR_HEIGHT,
   },
   webview: {
     flex: 1,

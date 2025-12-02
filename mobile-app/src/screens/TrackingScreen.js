@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, ScrollView, Dimensions } from 'react-native';
+import { View, StyleSheet, Alert, ScrollView, Dimensions, StatusBar, Platform } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Chip, Surface } from 'react-native-paper';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { envioService } from '../services/api';
@@ -7,6 +7,7 @@ import socketService from '../services/socket';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyAIwhMeAvxLiKqRu3KMtwN1iT1jJBtioG0';
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 export default function TrackingScreen({ route, navigation }) {
   const { envioId } = route.params;
@@ -718,6 +719,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+    paddingTop: STATUSBAR_HEIGHT,
   },
   header: {
     backgroundColor: '#4CAF50',

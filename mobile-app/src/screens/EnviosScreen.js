@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, ScrollView, Alert, StatusBar, Platform } from 'react-native';
 import { Card, Text, Chip, FAB, Button, Searchbar, SegmentedButtons } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
 import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 export default function EnviosScreen({ navigation }) {
   console.log('🎬 [EnviosScreen] Componente iniciando...');
@@ -531,6 +533,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+    paddingTop: STATUSBAR_HEIGHT,
   },
   searchbar: {
     margin: 10,

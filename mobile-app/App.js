@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider as PaperProvider, MD3LightTheme, Text } from 'react-native-paper';
-import { LogBox, View } from 'react-native';
+import { LogBox, View, StatusBar, SafeAreaView, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -312,8 +312,14 @@ export default function App() {
     <ErrorBoundary>
       <AuthContext.Provider value={authContext}>
         <PaperProvider theme={theme}>
-          <NavigationContainer>
-            <Stack.Navigator>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#4CAF50' }}>
+            <StatusBar 
+              barStyle="light-content" 
+              backgroundColor="#4CAF50" 
+              translucent={false}
+            />
+            <NavigationContainer>
+              <Stack.Navigator>
             {userToken == null || !userInfo ? (
               <Stack.Screen 
                 name="Login" 
@@ -380,6 +386,7 @@ export default function App() {
             )}
           </Stack.Navigator>
         </NavigationContainer>
+          </SafeAreaView>
       </PaperProvider>
     </AuthContext.Provider>
     </ErrorBoundary>

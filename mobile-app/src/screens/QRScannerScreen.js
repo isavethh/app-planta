@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Linking } from 'react-native';
+import { View, StyleSheet, Alert, Linking, StatusBar, Platform } from 'react-native';
 import { Text, Button, ActivityIndicator, Surface } from 'react-native-paper';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { envioService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 export default function QRScannerScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -174,6 +176,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000',
+    paddingTop: STATUSBAR_HEIGHT,
   },
   text: {
     fontSize: 16,
