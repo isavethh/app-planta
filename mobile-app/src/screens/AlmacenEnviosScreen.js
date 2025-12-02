@@ -119,6 +119,22 @@ export default function AlmacenEnviosScreen({ navigation }) {
               <Icon name="file-document" size={20} color="#1976D2" />
               <Text style={styles.documentButtonText}>Ver Documento</Text>
             </TouchableOpacity>
+            
+            {/* Botón para reportar incidente en pedidos entregados */}
+            {item.estado?.toLowerCase() === 'entregado' && (
+              <TouchableOpacity
+                style={styles.incidenteButton}
+                onPress={() => {
+                  navigation.navigate('ReportarIncidente', { 
+                    envioId: item.id, 
+                    envioCode: item.codigo 
+                  });
+                }}
+              >
+                <Icon name="alert-circle" size={20} color="#F44336" />
+                <Text style={styles.incidenteButtonText}>Reportar Incidente</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </Card.Content>
       </Card>
@@ -221,6 +237,23 @@ const styles = StyleSheet.create({
   documentButtonText: {
     marginLeft: 8,
     color: '#1976D2',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  incidenteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#F44336',
+  },
+  incidenteButtonText: {
+    marginLeft: 8,
+    color: '#F44336',
     fontWeight: 'bold',
     fontSize: 14,
   },

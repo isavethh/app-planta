@@ -1,17 +1,35 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, Dimensions } from 'react-native';
-import { Text, Card, ActivityIndicator, Chip } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { Text, Card, ActivityIndicator } from 'react-native-paper';
 import { AuthContext } from '../context/AuthContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
 
 const API_URL = 'http://10.26.14.34:3001/api';
 
+// Datos de demostración cuando el servicio IA no está disponible
+const DEMO_INSIGHTS = {
+  top_productos: [
+    { producto: 'Lechuga Fresca', cantidad_vendida: 150, ingresos: 450.00 },
+    { producto: 'Tomate Orgánico', cantidad_vendida: 120, ingresos: 360.00 },
+    { producto: 'Zanahoria', cantidad_vendida: 95, ingresos: 285.00 },
+    { producto: 'Pepino', cantidad_vendida: 80, ingresos: 240.00 },
+    { producto: 'Espinaca', cantidad_vendida: 65, ingresos: 195.00 },
+  ],
+  mejor_dia_semana: 'Miércoles',
+  tendencia_7dias: {
+    ventas_actuales: 45,
+    ventas_anteriores: 38,
+    cambio_porcentual: 18.4
+  },
+  recomendacion: '📈 Tus compras muestran una tendencia positiva. Considera aumentar el inventario de Lechuga y Tomate para la próxima semana.'
+};
+
 export default function AlmacenIAScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [insights, setInsights] = useState(null);
-  const [predicciones, setPredicciones] = useState([]);
+  const [iaDisponible, setIaDisponible] = useState(true);
   const { userInfo } = useContext(AuthContext);
 
   useEffect(() => {
@@ -22,20 +40,37 @@ export default function AlmacenIAScreen() {
     try {
       setLoading(true);
       
-      // Cargar insights del almacén
-      const insightsResponse = await axios.get(`${API_URL}/ia/insights-almacen/${userInfo.id}`);
-      if (insightsResponse.data.success) {
-        setInsights(insightsResponse.data.insights);
-      }
-
-      // Cargar predicciones de demanda
-      const prediccionResponse = await axios.get(`${API_URL}/ia/prediccion-demanda`);
-      if (prediccionResponse.data.success) {
-        setPredicciones(prediccionResponse.data.predicciones.slice(0, 5)); // Top 5
+      // Usar almacen_id del usuario
+      const almacenId = userInfo?.almacen_id || userInfo?.almacenId || 2;
+      console.log('🔍 Cargando IA para almacén:', almacenId);
+      
+      try {
+        const insightsResponse = await axios.get(`${API_URL}/ia/insights-almacen/${almacenId}`, { timeout: 8000 });
+        console.log('📊 Respuesta insights:', JSON.stringify(insightsResponse.data, null, 2));
+        
+        if (insightsResponse.data.success && insightsResponse.data.insights) {
+          const insights = insightsResponse.data.insights;
+          if (insights.top_productos && insights.top_productos.length > 0) {
+            setInsights(insights);
+            setIaDisponible(true);
+          } else {
+            console.log('⚠️ Insights vacíos, usando demo');
+            setInsights(DEMO_INSIGHTS);
+            setIaDisponible(false);
+          }
+        } else {
+          throw new Error('No success en respuesta');
+        }
+      } catch (insightError) {
+        console.log('⚠️ Error en servicio IA:', insightError.message);
+        setInsights(DEMO_INSIGHTS);
+        setIaDisponible(false);
       }
       
     } catch (error) {
-      console.error('❌ Error al cargar datos de IA:', error);
+      console.error('❌ Error general:', error);
+      setInsights(DEMO_INSIGHTS);
+      setIaDisponible(false);
     } finally {
       setLoading(false);
     }
@@ -67,8 +102,18 @@ export default function AlmacenIAScreen() {
       <View style={styles.header}>
         <Icon name="brain" size={40} color="#4CAF50" />
         <Text style={styles.headerTitle}>Inteligencia Artificial</Text>
-        <Text style={styles.headerSubtitle}>Insights y Predicciones</Text>
+        <Text style={styles.headerSubtitle}>Análisis de tu Almacén</Text>
       </View>
+
+      {/* Banner de modo demo */}
+      {!iaDisponible && (
+        <View style={styles.demoBanner}>
+          <Icon name="information" size={20} color="#fff" />
+          <Text style={styles.demoBannerText}>
+            Modo Demo - Inicia el servicio IA para datos reales
+          </Text>
+        </View>
+      )}
 
       {/* Recomendación Principal */}
       {insights?.recomendacion && (
@@ -83,14 +128,15 @@ export default function AlmacenIAScreen() {
         </Card>
       )}
 
-      {/* Top Productos */}
+      {/* Top Productos Comprados */}
       {insights?.top_productos && insights.top_productos.length > 0 && (
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.cardHeader}>
               <Icon name="trophy" size={24} color="#FFD700" />
-              <Text style={styles.cardTitle}>Productos Estrella</Text>
+              <Text style={styles.cardTitle}>Top Productos Comprados</Text>
             </View>
+            <Text style={styles.subtitleText}>Últimos 30 días</Text>
             {insights.top_productos.map((producto, index) => (
               <View key={index} style={styles.productoRow}>
                 <View style={styles.productoInfo}>
@@ -98,12 +144,12 @@ export default function AlmacenIAScreen() {
                   <View style={styles.productoDetails}>
                     <Text style={styles.productoNombre}>{producto.producto}</Text>
                     <Text style={styles.productoSubtitle}>
-                      {producto.cantidad_vendida} unidades vendidas
+                      {producto.cantidad_vendida} unidades compradas
                     </Text>
                   </View>
                 </View>
                 <Text style={styles.productoIngreso}>
-                  Bs. {producto.ingresos.toFixed(2)}
+                  Bs. {typeof producto.ingresos === 'number' ? producto.ingresos.toFixed(2) : producto.ingresos}
                 </Text>
               </View>
             ))}
@@ -117,68 +163,47 @@ export default function AlmacenIAScreen() {
           <Card.Content>
             <View style={styles.cardHeader}>
               <Icon name="calendar-star" size={24} color="#2196F3" />
-              <Text style={styles.cardTitle}>Mejor Día para Ventas</Text>
+              <Text style={styles.cardTitle}>Mejor Día de Compras</Text>
             </View>
             <View style={styles.mejorDiaContainer}>
               <Text style={styles.mejorDiaText}>{insights.mejor_dia_semana}</Text>
               <Text style={styles.mejorDiaSubtitle}>
-                Este día tiene mayor actividad de envíos
+                Este día recibes más envíos de la planta
               </Text>
             </View>
           </Card.Content>
         </Card>
       )}
 
-      {/* Predicción de Demanda */}
-      {predicciones.length > 0 && (
+      {/* Tendencia */}
+      {insights?.tendencia_7dias && (
         <Card style={styles.card}>
           <Card.Content>
             <View style={styles.cardHeader}>
-              <Icon name="chart-line" size={24} color="#9C27B0" />
-              <Text style={styles.cardTitle}>Predicción de Demanda</Text>
+              <Icon name="trending-up" size={24} color="#4CAF50" />
+              <Text style={styles.cardTitle}>Tendencia Semanal</Text>
             </View>
-            <Text style={styles.subtitleText}>Próxima semana - estimado</Text>
-            {predicciones.map((pred, index) => (
-              <View key={index} style={styles.prediccionRow}>
-                <View style={styles.prediccionInfo}>
-                  <Text style={styles.prediccionNombre}>{pred.producto}</Text>
-                  <View style={styles.prediccionChips}>
-                    <Chip
-                      mode="flat"
-                      style={[
-                        styles.tendenciaChip,
-                        pred.tendencia === 'creciente'
-                          ? styles.chipCreciente
-                          : pred.tendencia === 'decreciente'
-                          ? styles.chipDecreciente
-                          : styles.chipEstable,
-                      ]}
-                      textStyle={styles.chipText}
-                    >
-                      {pred.tendencia === 'creciente' ? '↗' : pred.tendencia === 'decreciente' ? '↘' : '→'}{' '}
-                      {pred.tendencia}
-                    </Chip>
-                    <Chip
-                      mode="flat"
-                      style={[
-                        styles.prioridadChip,
-                        pred.prioridad === 'alta'
-                          ? styles.chipAlta
-                          : pred.prioridad === 'media'
-                          ? styles.chipMedia
-                          : styles.chipBaja,
-                      ]}
-                      textStyle={styles.chipText}
-                    >
-                      {pred.prioridad}
-                    </Chip>
-                  </View>
-                </View>
-                <Text style={styles.prediccionDemanda}>
-                  {Math.round(pred.demanda_semanal_estimada)} uds/sem
-                </Text>
+            <View style={styles.tendenciaContainer}>
+              <View style={styles.tendenciaItem}>
+                <Text style={styles.tendenciaNumero}>{insights.tendencia_7dias.ventas_actuales}</Text>
+                <Text style={styles.tendenciaLabel}>Envíos esta semana</Text>
               </View>
-            ))}
+              <View style={styles.tendenciaDivider} />
+              <View style={styles.tendenciaItem}>
+                <Text style={styles.tendenciaNumero}>{insights.tendencia_7dias.ventas_anteriores}</Text>
+                <Text style={styles.tendenciaLabel}>Semana anterior</Text>
+              </View>
+              <View style={styles.tendenciaDivider} />
+              <View style={styles.tendenciaItem}>
+                <Text style={[
+                  styles.tendenciaPorcentaje,
+                  insights.tendencia_7dias.cambio_porcentual >= 0 ? styles.positivo : styles.negativo
+                ]}>
+                  {insights.tendencia_7dias.cambio_porcentual >= 0 ? '+' : ''}{insights.tendencia_7dias.cambio_porcentual}%
+                </Text>
+                <Text style={styles.tendenciaLabel}>Cambio</Text>
+              </View>
+            </View>
           </Card.Content>
         </Card>
       )}
@@ -187,7 +212,7 @@ export default function AlmacenIAScreen() {
       <View style={styles.footer}>
         <Icon name="robot" size={16} color="#999" />
         <Text style={styles.footerText}>
-          Powered by IA • Actualizado hace instantes
+          Análisis basado en tus datos reales
         </Text>
       </View>
     </ScrollView>
@@ -228,6 +253,19 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
   },
+  demoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9800',
+    padding: 10,
+    gap: 8,
+  },
+  demoBannerText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
   recomendacionCard: {
     margin: 12,
     backgroundColor: '#FFF3E0',
@@ -257,7 +295,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   cardTitle: {
     fontSize: 18,
@@ -323,59 +361,41 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  prediccionRow: {
+  tendenciaContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingVertical: 16,
   },
-  prediccionInfo: {
+  tendenciaItem: {
+    alignItems: 'center',
     flex: 1,
   },
-  prediccionNombre: {
-    fontSize: 15,
-    fontWeight: '600',
+  tendenciaDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#e0e0e0',
+  },
+  tendenciaNumero: {
+    fontSize: 28,
+    fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
   },
-  prediccionChips: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  tendenciaChip: {
-    height: 24,
-  },
-  prioridadChip: {
-    height: 24,
-  },
-  chipText: {
-    fontSize: 11,
+  tendenciaPorcentaje: {
+    fontSize: 24,
     fontWeight: 'bold',
   },
-  chipCreciente: {
-    backgroundColor: '#C8E6C9',
+  positivo: {
+    color: '#4CAF50',
   },
-  chipDecreciente: {
-    backgroundColor: '#FFCDD2',
+  negativo: {
+    color: '#F44336',
   },
-  chipEstable: {
-    backgroundColor: '#E0E0E0',
-  },
-  chipAlta: {
-    backgroundColor: '#FF5252',
-  },
-  chipMedia: {
-    backgroundColor: '#FFC107',
-  },
-  chipBaja: {
-    backgroundColor: '#9E9E9E',
-  },
-  prediccionDemanda: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#9C27B0',
+  tendenciaLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'center',
   },
   footer: {
     flexDirection: 'row',

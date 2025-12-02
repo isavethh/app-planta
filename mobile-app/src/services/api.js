@@ -9,8 +9,11 @@ export const API_URL = Platform.OS === 'web'
   ? 'http://localhost:3001/api'  // Para web
   : 'http://10.26.14.34:3001/api'; // ✅ IP CORRECTA DE TU PC EN NUEVO WIFI
 
+console.log('🌐 [API] URL configurada:', API_URL);
+
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 15000, // 15 segundos de timeout
   headers: {
     'Content-Type': 'application/json',
   },
@@ -19,6 +22,7 @@ const api = axios.create({
 // Interceptor para agregar token a todas las peticiones
 api.interceptors.request.use(
   async (config) => {
+    console.log(`📤 [API] ${config.method?.toUpperCase()} ${config.url}`);
     const token = await AsyncStorage.getItem('userToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -26,6 +30,25 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    console.error('❌ [API] Error en request:', error.message);
+    return Promise.reject(error);
+  }
+);
+
+// Interceptor para manejar respuestas y errores
+api.interceptors.response.use(
+  (response) => {
+    console.log(`📥 [API] Respuesta OK: ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    if (error.code === 'ECONNABORTED') {
+      console.error('❌ [API] Timeout - El servidor no respondió a tiempo');
+    } else if (error.code === 'ERR_NETWORK') {
+      console.error('❌ [API] Error de red - No se puede conectar al servidor');
+    } else {
+      console.error('❌ [API] Error:', error.message);
+    }
     return Promise.reject(error);
   }
 );
@@ -157,9 +180,17 @@ export const envioService = {
   },
 
   getByTransportista: async (transportistaId) => {
-    const response = await api.get(`/envios/transportista/${transportistaId}`);
-    // La API devuelve {success: true, data: [...]}
-    return response.data.data || response.data;
+    try {
+      console.log(`🚚 [API] Obteniendo envíos para transportista ID: ${transportistaId}`);
+      const response = await api.get(`/envios/transportista/${transportistaId}`);
+      console.log(`✅ [API] Envíos obtenidos:`, response.data?.data?.length || 0);
+      // La API devuelve {success: true, data: [...]}
+      return response.data?.data || response.data || [];
+    } catch (error) {
+      console.error(`❌ [API] Error obteniendo envíos del transportista:`, error.message);
+      // Devolver array vacío en lugar de lanzar error
+      return [];
+    }
   },
 
   // Alias para compatibilidad con EnviosScreen

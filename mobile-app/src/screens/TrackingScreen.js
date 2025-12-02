@@ -3,6 +3,7 @@ import { View, StyleSheet, Alert, ScrollView, Dimensions } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Chip, Surface } from 'react-native-paper';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { envioService } from '../services/api';
+import socketService from '../services/socket';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyAIwhMeAvxLiKqRu3KMtwN1iT1jJBtioG0';
@@ -16,19 +17,67 @@ export default function TrackingScreen({ route, navigation }) {
   const [indicePuntoActual, setIndicePuntoActual] = useState(0);
   const [distanciaTotal, setDistanciaTotal] = useState('');
   const [duracionTotal, setDuracionTotal] = useState('');
+  const [socketConectado, setSocketConectado] = useState(false);
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
 
   useEffect(() => {
     cargarDatos();
+    conectarSocket();
+    
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      socketService.off('posicion-actualizada');
+      socketService.off('simulacion-iniciada');
+      socketService.off('envio-completado');
     };
   }, []);
+
+  const conectarSocket = () => {
+    try {
+      socketService.connect();
+      setSocketConectado(socketService.isConnected());
+      
+      // Unirse a la sala del envío
+      socketService.joinEnvio(envioId);
+      
+      // Escuchar actualizaciones de posición (para recibir de otros clientes)
+      socketService.onPosicionActualizada((data) => {
+        if (data.envioId == envioId) {
+          console.log(`📍 [Socket] Recibido posición: ${Math.round(data.progreso * 100)}%`);
+        }
+      });
+      
+      // Escuchar cuando otra instancia inicia simulación
+      socketService.onSimulacionIniciada((data) => {
+        if (data.envioId == envioId && !simulando) {
+          console.log(`🚚 [Socket] Simulación iniciada remotamente`);
+          // Iniciar animación local sincronizada
+          if (data.rutaPuntos && data.rutaPuntos.length > 0) {
+            const puntos = data.rutaPuntos.map(p => ({
+              latitude: p.latitude || p.lat,
+              longitude: p.longitude || p.lng
+            }));
+            setRutaReal(puntos);
+            animarCamionSincronizado(puntos, 60000);
+          }
+        }
+      });
+      
+      console.log('✅ [TrackingScreen] Socket conectado y escuchando');
+    } catch (error) {
+      console.warn('⚠️ [TrackingScreen] Error conectando socket:', error);
+    }
+  };
 
   const cargarDatos = async () => {
     try {
       console.log(`[TrackingScreen] Cargando datos del envío ID: ${envioId}`);
+      
+      if (!envioId) {
+        throw new Error('ID de envío no válido');
+      }
+      
       const data = await envioService.getById(envioId);
       
       // Validar datos recibidos
@@ -41,11 +90,21 @@ export default function TrackingScreen({ route, navigation }) {
         data.estado_nombre = data.estado;
       }
       
+      // Asegurar que las coordenadas sean números válidos
+      data.origen_latitud = parseFloat(data.origen_latitud) || -17.7833;
+      data.origen_longitud = parseFloat(data.origen_longitud) || -63.1821;
+      data.destino_latitud = parseFloat(data.destino_latitud) || -17.7892;
+      data.destino_longitud = parseFloat(data.destino_longitud) || -63.1751;
+      
       console.log('[TrackingScreen] Envío cargado:', {
         id: data.id,
         codigo: data.codigo,
         estado: data.estado,
-        estado_nombre: data.estado_nombre
+        estado_nombre: data.estado_nombre,
+        coordenadas: {
+          origen: [data.origen_latitud, data.origen_longitud],
+          destino: [data.destino_latitud, data.destino_longitud]
+        }
       });
       
       setEnvio(data);
@@ -126,6 +185,15 @@ export default function TrackingScreen({ route, navigation }) {
       console.log('[TrackingScreen] Iniciando simulación con ruta real...');
       setSimulando(true);
 
+      // PRIMERO: Notificar al backend para que Laravel también muestre la simulación
+      console.log('[TrackingScreen] Notificando al backend para sincronizar con Laravel...');
+      try {
+        await envioService.simularMovimiento(envioId);
+        console.log('[TrackingScreen] ✅ Backend notificado - Laravel puede ver el tracking');
+      } catch (backendError) {
+        console.warn('[TrackingScreen] ⚠️ No se pudo notificar al backend:', backendError.message);
+      }
+
       const origen = {
         latitude: parseFloat(envio.origen_latitud) || -17.7833,
         longitude: parseFloat(envio.origen_longitud) || -63.1821,
@@ -156,8 +224,14 @@ export default function TrackingScreen({ route, navigation }) {
         });
       }
 
+      const duracionMs = 60000; // 1 minuto
+
+      // ENVIAR por WebSocket para sincronizar con Laravel
+      socketService.iniciarSimulacion(envioId, puntosRuta);
+      console.log('[TrackingScreen] 📡 Simulación enviada por WebSocket');
+
       // Animar el camión siguiendo la ruta real
-      animarCamionRutaReal(puntosRuta);
+      animarCamionRutaReal(puntosRuta, duracionMs);
     } catch (error) {
       console.error('❌ [TrackingScreen] Error en simulación:', error);
       Alert.alert('❌ Error', `No se pudo iniciar la simulación.\n\nDetalle: ${error.message}`);
@@ -165,40 +239,83 @@ export default function TrackingScreen({ route, navigation }) {
     }
   };
 
-  const animarCamionRutaReal = (puntos) => {
-    if (puntos.length === 0) return;
-
-    console.log(`[TrackingScreen] Iniciando animación con ${puntos.length} puntos de ruta real`);
+  // Animación sincronizada cuando se recibe de otro cliente
+  const animarCamionSincronizado = (puntos, duracionMs) => {
+    if (!puntos || puntos.length === 0) return;
+    
+    setSimulando(true);
+    setIndicePuntoActual(0);
+    
+    const intervaloMs = duracionMs / puntos.length;
     let indice = 0;
-    const incremento = Math.ceil(puntos.length / 50); // Mostrar ~50 pasos de la animación
-
+    
     intervalRef.current = setInterval(() => {
       if (indice >= puntos.length - 1) {
-        console.log('[TrackingScreen] Animación completada');
         clearInterval(intervalRef.current);
         setSimulando(false);
         setIndicePuntoActual(puntos.length - 1);
-        
-        // Auto-marcar como entregado
-        marcarComoEntregado();
         return;
       }
-
+      
       setIndicePuntoActual(indice);
+      indice++;
+    }, intervaloMs);
+  };
 
-      // Centrar mapa en el punto actual con zoom suave
-      if (mapRef.current) {
-        mapRef.current.animateToRegion({
-          latitude: puntos[indice].latitude,
-          longitude: puntos[indice].longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }, 500);
+  const animarCamionRutaReal = (puntos, duracionMs = 60000) => {
+    if (!puntos || puntos.length === 0) {
+      console.warn('[TrackingScreen] No hay puntos para animar');
+      setSimulando(false);
+      return;
+    }
+
+    console.log(`[TrackingScreen] Iniciando animación con ${puntos.length} puntos de ruta real`);
+    let indice = 0;
+    
+    // Calcular intervalo para que dure exactamente duracionMs
+    const intervaloMs = duracionMs / puntos.length;
+    console.log(`[TrackingScreen] Intervalo: ${intervaloMs.toFixed(0)}ms por punto`);
+
+    intervalRef.current = setInterval(() => {
+      try {
+        if (indice >= puntos.length - 1) {
+          console.log('[TrackingScreen] Animación completada');
+          clearInterval(intervalRef.current);
+          setSimulando(false);
+          setIndicePuntoActual(puntos.length - 1);
+          
+          // Notificar por socket que terminó
+          socketService.completarEnvio(envioId);
+          
+          // Auto-marcar como entregado
+          marcarComoEntregado();
+          return;
+        }
+
+        setIndicePuntoActual(indice);
+        
+        // Enviar posición por WebSocket para sincronizar con Laravel
+        const punto = puntos[indice];
+        const progreso = indice / puntos.length;
+        socketService.enviarPosicion(envioId, { latitude: punto.latitude, longitude: punto.longitude }, progreso);
+
+        // Centrar mapa en el punto actual
+        if (mapRef.current && puntos[indice]) {
+          mapRef.current.animateToRegion({
+            latitude: puntos[indice].latitude,
+            longitude: puntos[indice].longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, intervaloMs * 0.8);
+        }
+
+        indice++;
+      } catch (error) {
+        console.error('[TrackingScreen] Error en animación:', error);
+        clearInterval(intervalRef.current);
+        setSimulando(false);
       }
-
-      indice += incremento;
-      if (indice >= puntos.length) indice = puntos.length - 1;
-    }, 1000); // Cada 1 segundo
+    }, intervaloMs);
   };
 
   const marcarComoEntregado = async () => {

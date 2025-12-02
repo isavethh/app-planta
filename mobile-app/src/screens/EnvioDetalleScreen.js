@@ -22,7 +22,9 @@ export default function EnvioDetalleScreen({ route, navigation }) {
       const data = await envioService.getById(envioId);
       
       if (!data) {
-        throw new Error('No se recibió data del envío');
+        console.warn('⚠️ [EnvioDetalle] No se recibió data del envío');
+        setEnvio(null);
+        return;
       }
       
       // Normalizar campo estado - IMPORTANTE
@@ -32,20 +34,29 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         data.estado = data.estado_nombre;
       }
       
-      console.log('🔍 [EnvioDetalle] Envío cargado completo:', {
-        id: data.id,
-        codigo: data.codigo,
-        estado: data.estado,
-        estado_nombre: data.estado_nombre,
-        'Condición asignado': data.estado_nombre === 'asignado',
-        'typeof estado_nombre': typeof data.estado_nombre,
-        'Keys del objeto': Object.keys(data).filter(k => k.includes('estado'))
-      });
+      // Asegurar valores por defecto para evitar crashes
+      const envioNormalizado = {
+        id: data.id || envioId,
+        codigo: data.codigo || 'N/A',
+        estado: data.estado || 'pendiente',
+        estado_nombre: data.estado_nombre || data.estado || 'pendiente',
+        almacen_nombre: data.almacen_nombre || 'Sin especificar',
+        direccion_completa: data.direccion_completa || data.direccion_nombre || '',
+        detalles: Array.isArray(data.detalles) ? data.detalles : [],
+        asignacion: data.asignacion || null,
+        notas: data.notas || '',
+        qr_code: data.qr_code || null,
+        fecha_programada: data.fecha_programada || null,
+        hora_estimada_llegada: data.hora_estimada_llegada || null,
+        ...data
+      };
       
-      setEnvio(data);
+      console.log('🔍 [EnvioDetalle] Envío cargado:', envioNormalizado.codigo, 'Estado:', envioNormalizado.estado_nombre);
+      
+      setEnvio(envioNormalizado);
     } catch (error) {
-      console.error('❌ [EnvioDetalle] Error al cargar envío:', error);
-      Alert.alert('Error', 'No se pudo cargar el envío');
+      console.error('❌ [EnvioDetalle] Error al cargar envío:', error?.message || error);
+      setEnvio(null);
     } finally {
       setLoading(false);
     }
@@ -105,7 +116,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         // Usar el nuevo servicio iniciarEnvio que también inicia la simulación
         await envioService.iniciarEnvio(envioId);
 
-        // Intentar iniciar simulación automáticamente
+        // Iniciar simulación para sincronizar con Laravel
         try {
           await envioService.simularMovimiento(envioId);
         } catch (simError) {
@@ -113,10 +124,20 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         }
 
         Alert.alert(
-          'Éxito', 
-          'Envío iniciado correctamente. La simulación del recorrido está activa y se puede ver en el sistema web.',
+          '🚚 Envío Iniciado', 
+          'La ruta está activa. ¿Deseas ver el seguimiento en tiempo real?',
           [
-            { text: 'OK', onPress: () => cargarEnvio() }
+            { 
+              text: 'Ver Tracking', 
+              onPress: () => navigation.navigate('Tracking', { envioId })
+            },
+            { 
+              text: 'Volver', 
+              onPress: () => {
+                cargarEnvio();
+                navigation.goBack();
+              }
+            }
           ]
         );
       } else if (accionPendiente === 'entregar') {
@@ -154,21 +175,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     }
   };
 
-  const handleSimularRuta = async () => {
-    try {
-      setActionLoading(true);
-      const resp = await envioService.simularMovimiento(envioId);
 
-      // Navegar al tracking para ver la simulación inmediatamente
-      Alert.alert('Simulación iniciada', 'Se generó una ruta de ejemplo. Abriendo seguimiento...');
-      navigation.navigate('Tracking', { envioId });
-    } catch (error) {
-      console.error('Error al simular ruta desde detalle:', error);
-      Alert.alert('Error', 'No se pudo generar la simulación. Verifica el backend.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
   const getEstadoColor = (estado) => {
     const colores = {
@@ -420,17 +427,28 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         )}
 
         {(envio.estado_nombre === 'en_transito' || envio.estado === 'en_transito') && (
-          <Button
-            mode="contained"
-            icon="check-circle"
-            onPress={() => confirmarAccion('entregar')}
-            style={styles.actionButton}
-            buttonColor="#4CAF50"
-            loading={actionLoading}
-            disabled={actionLoading}
-          >
-            Marcar como Entregado
-          </Button>
+          <View>
+            <Button
+              mode="contained"
+              icon="map-marker-path"
+              onPress={() => navigation.navigate('Tracking', { envioId })}
+              style={[styles.actionButton, { marginBottom: 10 }]}
+              buttonColor="#2196F3"
+            >
+              Ver Seguimiento en Mapa
+            </Button>
+            <Button
+              mode="contained"
+              icon="check-circle"
+              onPress={() => confirmarAccion('entregar')}
+              style={styles.actionButton}
+              buttonColor="#4CAF50"
+              loading={actionLoading}
+              disabled={actionLoading}
+            >
+              Marcar como Entregado
+            </Button>
+          </View>
         )}
 
         {(envio.estado_nombre === 'entregado' || envio.estado_nombre === 'cancelado') && (
@@ -444,19 +462,6 @@ export default function EnvioDetalleScreen({ route, navigation }) {
               {envio.estado_nombre === 'entregado' ? 'Envío Completado' : 'Envío Cancelado'}
             </Text>
           </View>
-        )}
-        {/* Botón adicional para simular ruta (útil para pruebas/demo) */}
-        {envio.estado_nombre !== 'entregado' && (
-          <Button
-            mode="outlined"
-            icon="routes"
-            onPress={handleSimularRuta}
-            style={[styles.actionButton, { marginTop: 8 }]}
-            loading={actionLoading}
-            disabled={actionLoading}
-          >
-            Simular Ruta (Demo)
-          </Button>
         )}
       </Surface>
 

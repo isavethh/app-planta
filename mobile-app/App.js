@@ -33,6 +33,7 @@ import AlmacenEnviosScreen from './src/screens/AlmacenEnviosScreen';
 import AlmacenNotasVentaScreen from './src/screens/AlmacenNotasVentaScreen';
 import AlmacenEstadisticasScreen from './src/screens/AlmacenEstadisticasScreen';
 import AlmacenIAScreen from './src/screens/AlmacenIAScreen';
+import ReportarIncidenteScreen from './src/screens/ReportarIncidenteScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -363,6 +364,16 @@ export default function App() {
                   component={DocumentoEnvioScreen}
                   options={{ 
                     headerShown: false
+                  }}
+                />
+                <Stack.Screen 
+                  name="ReportarIncidente" 
+                  component={ReportarIncidenteScreen}
+                  options={{ 
+                    title: 'Reportar Incidente',
+                    headerShown: true,
+                    headerStyle: { backgroundColor: '#F44336' },
+                    headerTintColor: '#fff'
                   }}
                 />
               </>

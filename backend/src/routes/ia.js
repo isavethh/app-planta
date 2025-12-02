@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 
-const IA_SERVICE_URL = process.env.IA_SERVICE_URL || 'http://localhost:5000';
+const IA_SERVICE_URL = process.env.IA_SERVICE_URL || 'http://127.0.0.1:5000';
 
 // Proxy para predicción de demanda
 router.get('/prediccion-demanda', async (req, res) => {

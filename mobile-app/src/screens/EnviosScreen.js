@@ -46,25 +46,34 @@ export default function EnviosScreen({ navigation }) {
       
       if (!userInfo.id) {
         console.error('❌ [EnviosScreen] userInfo.id faltante:', userInfo);
-        Alert.alert('Error', 'Sesión inválida. Por favor, cierra sesión e inicia de nuevo.');
         setLoading(false);
         return;
       }
       
       console.log('[EnviosScreen] UserInfo completo:', JSON.stringify(userInfo, null, 2));
       console.log(`[EnviosScreen] Cargando envíos para ${esTransportista ? 'transportista' : 'almacén'} ID: ${userInfo.id}`);
-      let data;
+      let data = [];
       
       if (esTransportista) {
         // Cargar envíos asignados al transportista
         console.log(`[EnviosScreen] Llamando getByTransportista(${userInfo.id})`);
-        const response = await envioService.getByTransportista(userInfo.id);
-        console.log('[EnviosScreen] Respuesta recibida:', JSON.stringify(response, null, 2));
-        data = response?.success ? response.data : (response || []);
+        try {
+          const response = await envioService.getByTransportista(userInfo.id);
+          console.log('[EnviosScreen] Respuesta recibida:', typeof response);
+          data = Array.isArray(response) ? response : (response?.data || response || []);
+        } catch (transportistaError) {
+          console.error('[EnviosScreen] Error específico de transportista:', transportistaError);
+          data = [];
+        }
       } else {
         // Cargar envíos del almacén
         console.log(`[EnviosScreen] Llamando getAll(${userInfo.id})`);
-        data = await envioService.getAll(userInfo.id);
+        try {
+          data = await envioService.getAll(userInfo.id);
+        } catch (almacenError) {
+          console.error('[EnviosScreen] Error específico de almacén:', almacenError);
+          data = [];
+        }
       }
       
       console.log(`[EnviosScreen] Total envíos recibidos: ${Array.isArray(data) ? data.length : 0}`);
@@ -74,15 +83,10 @@ export default function EnviosScreen({ navigation }) {
     } catch (error) {
       console.error('❌ [EnviosScreen] ERROR al cargar envíos:', error);
       console.error('❌ [EnviosScreen] Error.message:', error?.message);
-      console.error('❌ [EnviosScreen] Error.stack:', error?.stack);
-      console.error('❌ [EnviosScreen] Error completo:', JSON.stringify(error, null, 2));
       setEnvios([]);
       setEnviosFiltrados([]);
-      Alert.alert(
-        '❌ Error al Cargar Envíos', 
-        `No se pudieron cargar los envíos.\n\nDetalle: ${error?.message || 'Error desconocido'}\n\nVerifica tu conexión e intenta nuevamente.`,
-        [{ text: 'Reintentar', onPress: () => cargarEnvios() }, { text: 'Cerrar' }]
-      );
+      // No mostrar alerta para evitar molestos popups
+      console.warn('⚠️ [EnviosScreen] No se pudieron cargar envíos, mostrando lista vacía');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -412,28 +416,47 @@ export default function EnviosScreen({ navigation }) {
           </View>
         )}
 
-        {/* Botones para ver detalles (usuarios no transportistas) */}
+        {/* Botones para ver detalles (usuarios no transportistas - ALMACÉN) */}
         {!esTransportista && (
-          <View style={styles.twoButtonsRow}>
-            <Button 
-              mode="outlined" 
-              onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
-              icon="file-document-outline"
-              style={[styles.actionButton, { flex: 1, marginRight: 5, marginTop: 10 }]}
-              compact
-            >
-              Ver Detalles
-            </Button>
-            {(item.estado === 'en_transito' || item.estado === 'entregado') && (
+          <View style={styles.actionsContainer}>
+            <View style={styles.twoButtonsRow}>
               <Button 
-                mode="contained" 
-                onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
-                icon="map-marker-path"
-                style={[styles.actionButton, { flex: 1, marginLeft: 5, marginTop: 10 }]}
-                buttonColor="#9C27B0"
+                mode="outlined" 
+                onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+                icon="file-document-outline"
+                style={[styles.actionButton, { flex: 1, marginRight: 5, marginTop: 10 }]}
                 compact
               >
-                Ver Ruta
+                Ver Detalles
+              </Button>
+              {(item.estado === 'en_transito' || item.estado === 'entregado') && (
+                <Button 
+                  mode="contained" 
+                  onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                  icon="map-marker-path"
+                  style={[styles.actionButton, { flex: 1, marginLeft: 5, marginTop: 10 }]}
+                  buttonColor="#9C27B0"
+                  compact
+                >
+                  Ver Ruta
+                </Button>
+              )}
+            </View>
+            
+            {/* Botón para reportar incidente en pedidos entregados */}
+            {item.estado === 'entregado' && (
+              <Button 
+                mode="outlined" 
+                onPress={() => navigation.navigate('ReportarIncidente', { 
+                  envioId: item.id, 
+                  envioCode: item.codigo 
+                })}
+                icon="alert-circle"
+                style={[styles.actionButton, { marginTop: 8 }]}
+                textColor="#F44336"
+                compact
+              >
+                Reportar un Incidente
               </Button>
             )}
           </View>
