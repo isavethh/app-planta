@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 // URL del servidor WebSocket con namespace /tracking
 const SOCKET_URL = Platform.OS === 'web' 
   ? 'http://localhost:3001/tracking'
-  : 'http://10.26.14.34:3001/tracking';
+  : 'http://192.168.0.129:3001/tracking';
 
 class SocketService {
   constructor() {

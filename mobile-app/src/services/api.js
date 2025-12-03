@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
 // IMPORTANTE: Asegúrate de que Node.js esté corriendo en puerto 3001
 export const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:3001/api'  // Para web
-  : 'http://10.26.14.34:3001/api'; // ✅ IP CORRECTA DE TU PC EN NUEVO WIFI
+  : 'http://192.168.0.129:3001/api'; // ✅ IP CORRECTA DE TU PC EN NUEVO WIFI
 
 console.log('🌐 [API] URL configurada:', API_URL);
 
@@ -239,6 +239,123 @@ export const almacenService = {
     console.log(`📄 [API] Obteniendo detalles de nota de venta: ${notaVentaId}`);
     const response = await api.get(`/almacen-app/nota-venta/${notaVentaId}`);
     return response.data?.data || null;
+  },
+};
+
+// Servicios de Rutas Multi-Entrega
+export const rutasMultiService = {
+  // Listar todas las rutas
+  listarRutas: async (params = {}) => {
+    console.log('🛣️ [API] Listando rutas multi-entrega');
+    const response = await api.get('/rutas-entrega', { params });
+    return response.data;
+  },
+
+  // Listar rutas de un transportista específico
+  listarPorTransportista: async (transportistaId) => {
+    console.log(`🛣️ [API] Listando rutas del transportista: ${transportistaId}`);
+    const response = await api.get(`/rutas-entrega/transportista/${transportistaId}`);
+    return response.data;
+  },
+
+  // Obtener detalle de una ruta
+  obtenerRuta: async (rutaId) => {
+    console.log(`🛣️ [API] Obteniendo ruta: ${rutaId}`);
+    const response = await api.get(`/rutas-entrega/${rutaId}`);
+    return response.data;
+  },
+
+  // Aceptar ruta multi-entrega
+  aceptarRuta: async (rutaId, transportistaData = {}) => {
+    console.log(`🛣️ [API] Aceptando ruta: ${rutaId}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/aceptar`, transportistaData);
+    return response.data;
+  },
+
+  // Rechazar ruta multi-entrega
+  rechazarRuta: async (rutaId, motivo) => {
+    console.log(`🛣️ [API] Rechazando ruta: ${rutaId}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/rechazar`, { motivo });
+    return response.data;
+  },
+
+  // Obtener resumen de una ruta (para PDF)
+  obtenerResumen: async (rutaId) => {
+    console.log(`🛣️ [API] Obteniendo resumen de ruta: ${rutaId}`);
+    const response = await api.get(`/rutas-entrega/${rutaId}/resumen`);
+    return response.data;
+  },
+
+  // Iniciar una ruta
+  iniciarRuta: async (rutaId, ubicacion = {}) => {
+    console.log(`🛣️ [API] Iniciando ruta: ${rutaId}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/iniciar`, ubicacion);
+    return response.data;
+  },
+
+  // Registrar llegada a una parada
+  registrarLlegada: async (rutaId, paradaId, ubicacion = {}) => {
+    console.log(`🛣️ [API] Registrando llegada a parada: ${paradaId}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/paradas/${paradaId}/llegada`, ubicacion);
+    return response.data;
+  },
+
+  // Completar entrega en una parada
+  completarEntrega: async (rutaId, paradaId, datosEntrega) => {
+    console.log(`🛣️ [API] Completando entrega en parada: ${paradaId}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/paradas/${paradaId}/entregar`, datosEntrega);
+    return response.data;
+  },
+
+  // Guardar checklist (salida o entrega)
+  guardarChecklist: async (rutaId, checklistData) => {
+    console.log(`🛣️ [API] Guardando checklist tipo: ${checklistData.tipo}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/checklists`, checklistData);
+    return response.data;
+  },
+
+  // Subir evidencia (foto)
+  subirEvidencia: async (rutaId, paradaId, evidencia) => {
+    console.log(`🛣️ [API] Subiendo evidencia para parada: ${paradaId}`);
+    const response = await api.post(`/rutas-entrega/${rutaId}/paradas/${paradaId}/evidencias`, evidencia);
+    return response.data;
+  },
+
+  // Obtener template de checklist
+  obtenerChecklistTemplate: async (tipo = 'salida') => {
+    console.log(`🛣️ [API] Obteniendo template de checklist: ${tipo}`);
+    const response = await api.get(`/rutas-entrega/checklists/template/${tipo}`);
+    return response.data;
+  },
+
+  // Actualizar ubicación en tiempo real
+  actualizarUbicacion: async (rutaId, ubicacion) => {
+    const response = await api.post(`/rutas-entrega/${rutaId}/ubicacion`, ubicacion);
+    return response.data;
+  },
+};
+
+// Servicios de Incidentes
+export const incidenteService = {
+  // Reportar un incidente
+  reportar: async (incidenteData) => {
+    console.log('⚠️ [API] Reportando incidente');
+    const response = await api.post('/incidentes', incidenteData);
+    return response.data;
+  },
+
+  // Listar incidentes
+  listar: async (params = {}) => {
+    console.log('⚠️ [API] Listando incidentes');
+    const response = await api.get('/incidentes', { params });
+    return response.data;
+  },
+
+  // Obtener detalle de incidente
+  obtener: async (incidenteId) => {
+    console.log(`⚠️ [API] Obteniendo incidente: ${incidenteId}`);
+    const response = await api.get(`/incidentes/${incidenteId}`);
+    return response.data;
   },
 };
 

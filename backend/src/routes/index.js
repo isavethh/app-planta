@@ -14,6 +14,7 @@ const notasVentaRoutes = require('./notasVenta');
 const almacenAppRoutes = require('./almacenApp');
 const iaRoutes = require('./ia');
 const incidentesRoutes = require('./incidentes');
+const rutasEntregaRoutes = require('./rutasEntrega');
 
 // Rutas públicas
 router.use('/auth', authRoutes);
@@ -41,5 +42,6 @@ router.use('/envios', enviosRoutes);
 router.use('/transportistas', transportistasRoutes);
 router.use('/catalogos', catalogosRoutes);
 router.use('/checklist', checklistRoutes);
+router.use('/rutas-entrega', rutasEntregaRoutes);
 
 module.exports = router;

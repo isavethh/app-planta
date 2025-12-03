@@ -546,14 +546,15 @@ const rechazarAsignacion = async (req, res) => {
   }
 };
 
-// Obtener envíos por transportista
+// Obtener envíos por transportista (incluye envíos individuales Y rutas multi-entrega)
 const getByTransportista = async (req, res) => {
   try {
     const { transportistaId } = req.params;
 
     console.log(`🔍 Buscando envíos para transportista ID: ${transportistaId}`);
 
-    const result = await pool.query(`
+    // 1. Obtener envíos individuales (asignación normal)
+    const enviosIndividuales = await pool.query(`
       SELECT e.id, e.codigo, e.estado, e.fecha_estimada_entrega, e.hora_estimada, 
              e.total_cantidad, e.total_peso, e.total_precio, e.created_at,
              e.categoria, e.observaciones,
@@ -570,33 +571,83 @@ const getByTransportista = async (req, res) => {
              ae.fecha_asignacion,
              v.placa as vehiculo_placa,
              v.marca as vehiculo_marca,
-             v.modelo as vehiculo_modelo
+             v.modelo as vehiculo_modelo,
+             FALSE as es_multi_entrega,
+             NULL::integer as ruta_id,
+             1 as total_envios_ruta
       FROM envios e
       INNER JOIN envio_asignaciones ae ON e.id = ae.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       WHERE ae.transportista_id = $1
         AND e.estado IN ('pendiente', 'asignado', 'aceptado', 'en_transito', 'entregado')
-      ORDER BY 
-        CASE 
-          WHEN e.estado = 'entregado' THEN 1
-          ELSE 0
-        END ASC,
-        e.created_at DESC
+        AND e.ruta_entrega_id IS NULL
+      ORDER BY e.created_at DESC
     `, [transportistaId]);
 
-    console.log(`✅ Encontrados ${result.rows.length} envíos para transportista ${transportistaId}`);
+    // 2. Obtener rutas multi-entrega asignadas al transportista
+    const rutasMulti = await pool.query(`
+      SELECT 
+        r.id as ruta_id,
+        r.codigo,
+        r.estado,
+        r.fecha as fecha_estimada_entrega,
+        NULL as hora_estimada,
+        r.total_envios as total_cantidad,
+        r.total_peso,
+        0 as total_precio,
+        r.created_at,
+        'multi-entrega' as categoria,
+        r.observaciones,
+        r.hora_salida as fecha_inicio_transito,
+        r.hora_fin as fecha_entrega,
+        'Múltiples destinos' as almacen_nombre,
+        'Ruta con ' || r.total_envios || ' paradas' as direccion_completa,
+        NULL as destino_latitud,
+        NULL as destino_longitud,
+        -17.7833 as origen_latitud,
+        -63.1821 as origen_longitud,
+        'Planta Principal' as origen_nombre,
+        r.transportista_id,
+        r.vehiculo_id,
+        r.created_at as fecha_asignacion,
+        v.placa as vehiculo_placa,
+        v.marca as vehiculo_marca,
+        v.modelo as vehiculo_modelo,
+        TRUE as es_multi_entrega,
+        r.id as id,
+        r.total_envios as total_envios_ruta
+      FROM rutas_entrega r
+      LEFT JOIN vehiculos v ON r.vehiculo_id = v.id
+      WHERE r.transportista_id = $1
+        AND r.estado IN ('programada', 'aceptada', 'en_transito', 'completada')
+      ORDER BY r.created_at DESC
+    `, [transportistaId]);
+
+    // Combinar resultados
+    const todosLosEnvios = [...enviosIndividuales.rows, ...rutasMulti.rows];
     
-    if (result.rows.length > 0) {
-      console.log(`📍 Ejemplo de datos del primer envío:`);
-      console.log(`   - Código: ${result.rows[0].codigo}`);
-      console.log(`   - Estado: ${result.rows[0].estado}`);
-      console.log(`   - Vehículo: ${result.rows[0].vehiculo_placa || 'No asignado'}`);
-      console.log(`   - Origen: ${result.rows[0].origen_nombre} (${result.rows[0].origen_latitud}, ${result.rows[0].origen_longitud})`);
-      console.log(`   - Destino: ${result.rows[0].almacen_nombre} (${result.rows[0].destino_latitud}, ${result.rows[0].destino_longitud})`);
-    }
+    // Ordenar por estado (pendientes primero) y fecha
+    todosLosEnvios.sort((a, b) => {
+      const ordenEstado = {
+        'programada': 0,
+        'aceptada': 1,
+        'asignado': 2,
+        'aceptado': 3,
+        'en_transito': 4,
+        'entregado': 5,
+        'completada': 5
+      };
+      const estadoA = ordenEstado[a.estado] ?? 5;
+      const estadoB = ordenEstado[b.estado] ?? 5;
+      if (estadoA !== estadoB) return estadoA - estadoB;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    console.log(`✅ Encontrados ${enviosIndividuales.rows.length} envíos individuales y ${rutasMulti.rows.length} rutas multi-entrega`);
+    console.log(`📦 Total: ${todosLosEnvios.length} items para transportista ${transportistaId}`);
     
-    res.json({ success: true, data: result.rows });
+    res.json({ success: true, data: todosLosEnvios });
   } catch (error) {
     console.error('❌ Error al obtener envíos del transportista:', error);
     console.error('Stack:', error.stack);

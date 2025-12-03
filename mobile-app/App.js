@@ -34,6 +34,11 @@ import AlmacenNotasVentaScreen from './src/screens/AlmacenNotasVentaScreen';
 import AlmacenEstadisticasScreen from './src/screens/AlmacenEstadisticasScreen';
 import AlmacenIAScreen from './src/screens/AlmacenIAScreen';
 import ReportarIncidenteScreen from './src/screens/ReportarIncidenteScreen';
+// Pantallas de rutas multi-entrega
+import MisRutasScreen from './src/screens/MisRutasScreen';
+import RutaMultiEntregaScreen from './src/screens/RutaMultiEntregaScreen';
+import ChecklistSalidaScreen from './src/screens/ChecklistSalidaScreen';
+import ChecklistEntregaScreen from './src/screens/ChecklistEntregaScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -67,6 +72,8 @@ function TransportistaTabs() {
 
             if (route.name === 'MisEnvios') {
               iconName = 'truck-delivery';
+            } else if (route.name === 'MisRutas') {
+              iconName = 'map-marker-path';
             } else if (route.name === 'Historial') {
               iconName = 'history';
             } else if (route.name === 'Perfil') {
@@ -83,6 +90,11 @@ function TransportistaTabs() {
         name="MisEnvios" 
         component={EnviosScreen} 
         options={{ title: 'Mis Envíos', headerShown: false }}
+      />
+      <Tab.Screen 
+        name="MisRutas" 
+        component={MisRutasScreen}
+        options={{ title: 'Mis Rutas', headerShown: false }}
       />
       <Tab.Screen 
         name="Historial" 
@@ -380,6 +392,42 @@ export default function App() {
                     headerShown: true,
                     headerStyle: { backgroundColor: '#F44336' },
                     headerTintColor: '#fff'
+                  }}
+                />
+                {/* Pantallas de Rutas Multi-Entrega */}
+                <Stack.Screen 
+                  name="RutaMultiEntrega" 
+                  component={RutaMultiEntregaScreen}
+                  options={{ 
+                    headerShown: false
+                  }}
+                />
+                <Stack.Screen 
+                  name="RutaMultiDetalle" 
+                  component={RutaMultiEntregaScreen}
+                  options={{ 
+                    headerShown: false
+                  }}
+                />
+                <Stack.Screen 
+                  name="RutaMultiTracking" 
+                  component={RutaMultiEntregaScreen}
+                  options={{ 
+                    headerShown: false
+                  }}
+                />
+                <Stack.Screen 
+                  name="ChecklistSalida" 
+                  component={ChecklistSalidaScreen}
+                  options={{ 
+                    headerShown: false
+                  }}
+                />
+                <Stack.Screen 
+                  name="ChecklistEntrega" 
+                  component={ChecklistEntregaScreen}
+                  options={{ 
+                    headerShown: false
                   }}
                 />
               </>

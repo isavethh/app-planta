@@ -377,7 +377,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           mode="outlined"
           icon="file-document"
           onPress={() => {
-            const documentURL = `http://10.26.14.34:3001/api/envios/${envioId}/documento`;
+            const documentURL = `http://192.168.0.129:3001/api/envios/${envioId}/documento`;
             navigation.navigate('DocumentoEnvio', { documentURL, codigo: envio.codigo });
           }}
           style={[styles.actionButton, { marginBottom: 10 }]}

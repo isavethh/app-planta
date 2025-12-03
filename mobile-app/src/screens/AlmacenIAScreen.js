@@ -5,7 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
 
-const API_URL = 'http://10.26.14.34:3001/api';
+const API_URL = 'http://192.168.0.129:3001/api';
 
 // Datos de demostración cuando el servicio IA no está disponible
 const DEMO_INSIGHTS = {

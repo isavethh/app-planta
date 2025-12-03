@@ -5,7 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 
-const API_URL = 'http://10.26.14.34:3001/api';
+const API_URL = 'http://192.168.0.129:3001/api';
 
 const TIPOS_INCIDENTE = [
   { value: 'producto_danado', label: 'Producto dañado', icon: 'package-variant-closed-remove' },

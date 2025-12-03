@@ -58,7 +58,7 @@ export default function AlmacenEnviosScreen({ navigation }) {
   const renderEnvio = ({ item }) => (
     <TouchableOpacity
       onPress={() => {
-        const documentURL = `http://10.26.14.34:3001/api/envios/${item.id}/documento`;
+        const documentURL = `http://192.168.0.129:3001/api/envios/${item.id}/documento`;
         navigation.navigate('DocumentoEnvio', { 
           documentURL: documentURL,
           codigo: item.codigo
@@ -109,7 +109,7 @@ export default function AlmacenEnviosScreen({ navigation }) {
             <TouchableOpacity
               style={styles.documentButton}
               onPress={() => {
-                const documentURL = `http://10.26.14.34:3001/api/envios/${item.id}/documento`;
+                const documentURL = `http://192.168.0.129:3001/api/envios/${item.id}/documento`;
                 navigation.navigate('DocumentoEnvio', { 
                   documentURL: documentURL,
                   codigo: item.codigo

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, ScrollView, Alert, StatusBar, Platform } from 'react-native';
-import { Card, Text, Chip, FAB, Button, Searchbar, SegmentedButtons } from 'react-native-paper';
+import { Card, Text, Chip, FAB, Button, Searchbar, SegmentedButtons, Badge } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
-import { envioService } from '../services/api';
+import { envioService, rutasMultiService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
@@ -200,6 +200,82 @@ export default function EnviosScreen({ navigation }) {
     }
   };
 
+  // ========== FUNCIONES PARA RUTAS MULTI-ENTREGA ==========
+  const handleAceptarRutaMultiple = async (rutaId) => {
+    Alert.alert(
+      '🛣️ Aceptar Ruta Multi-Entrega',
+      '¿Deseas aceptar esta ruta con múltiples entregas? Se generarán las notas de venta para todos los envíos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Aceptar Ruta',
+          onPress: async () => {
+            try {
+              console.log(`[EnviosScreen] Aceptando ruta multi-entrega ID: ${rutaId}`);
+              const result = await rutasMultiService.aceptarRuta(rutaId, {
+                nombre: userInfo.name || 'Transportista',
+                email: userInfo.email || 'sin@email.com'
+              });
+              console.log('[EnviosScreen] Ruta aceptada:', result);
+              Alert.alert(
+                '✅ Ruta Aceptada', 
+                `La ruta multi-entrega fue aceptada.\nTotal envíos: ${result.total_envios || 'N/A'}\nTotal paradas: ${result.total_paradas || 'N/A'}\n\n¡Ya puedes iniciar la ruta!`
+              );
+              cargarEnvios();
+            } catch (error) {
+              console.error('❌ [EnviosScreen] Error al aceptar ruta:', error);
+              Alert.alert('❌ Error', `No se pudo aceptar la ruta.\n\nDetalle: ${error.message}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRechazarRutaMultiple = async (rutaId) => {
+    Alert.alert(
+      '❌ Rechazar Ruta Multi-Entrega',
+      'Selecciona el motivo del rechazo:',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'No tengo disponibilidad',
+          onPress: () => rechazarRutaConMotivo(rutaId, 'No tengo disponibilidad en este momento')
+        },
+        {
+          text: 'Muchas paradas',
+          onPress: () => rechazarRutaConMotivo(rutaId, 'La ruta tiene demasiadas paradas para mi vehículo')
+        },
+        {
+          text: 'Vehículo en mantenimiento',
+          onPress: () => rechazarRutaConMotivo(rutaId, 'Mi vehículo está en mantenimiento')
+        },
+        {
+          text: 'Otro motivo',
+          onPress: () => rechazarRutaConMotivo(rutaId, 'Motivo personal - No puedo realizar esta ruta')
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const rechazarRutaConMotivo = async (rutaId, motivo) => {
+    try {
+      console.log(`[EnviosScreen] Rechazando ruta multi-entrega ID: ${rutaId} - Motivo: ${motivo}`);
+      await rutasMultiService.rechazarRuta(rutaId, motivo);
+      console.log('[EnviosScreen] Ruta rechazada exitosamente');
+      Alert.alert(
+        '✅ Ruta Rechazada', 
+        'La ruta multi-entrega fue rechazada. El administrador será notificado para reasignarla.'
+      );
+      cargarEnvios();
+    } catch (error) {
+      console.error('❌ [EnviosScreen] Error al rechazar ruta:', error);
+      Alert.alert('❌ Error', `No se pudo rechazar la ruta.\n\nDetalle: ${error.message}`);
+    }
+  };
+  // =========================================================
+
   const handleIniciarRuta = async (envioId) => {
     Alert.alert(
       'Iniciar Ruta',
@@ -266,37 +342,81 @@ export default function EnviosScreen({ navigation }) {
   };
 
   const renderEnvio = ({ item }) => {
-    // Validación de datos
-    if (!item || !item.id) {
+    // Validación de datos - para rutas multi-entrega el ID puede venir como ruta_id
+    const itemId = item?.id || item?.ruta_id;
+    if (!item || !itemId) {
       console.warn('[EnviosScreen] Item inválido:', item);
       return null;
     }
 
+    // Detectar si es una ruta multi-entrega (puede venir como es_multi_entrega o es_ruta_multiple)
+    const esRutaMultiple = item.es_multi_entrega === true || item.es_ruta_multiple === true || item.tipo === 'RUTA_MULTIPLE' || item.codigo?.startsWith('RUTA-');
+    const totalEnviosRuta = item.total_envios_ruta || item.total_envios || 0;
+
+    // Debug para ver qué está llegando
+    if (esRutaMultiple) {
+      console.log('🛣️ [EnviosScreen] Ruta Multi-Entrega detectada:', {
+        id: itemId,
+        codigo: item.codigo,
+        estado: item.estado,
+        es_multi_entrega: item.es_multi_entrega,
+        total_envios: totalEnviosRuta,
+        esTransportista: esTransportista,
+        userTipo: userInfo?.tipo,
+        userRolNombre: userInfo?.rol_nombre
+      });
+    }
+
     return (
-      <Card style={styles.card} elevation={4}>
+      <Card style={[styles.card, esRutaMultiple && styles.cardMultiEntrega]} elevation={4}>
         <Card.Content>
+          {/* Badge de Multi-Entrega */}
+          {esRutaMultiple && (
+            <View style={styles.multiEntregaBadge}>
+              <Icon name="routes" size={18} color="#FFF" />
+              <Text style={styles.multiEntregaText}>
+                🛣️ RUTA MULTI-ENTREGA ({totalEnviosRuta} envíos)
+              </Text>
+            </View>
+          )}
+
+          {/* DEBUG: Mostrar si es transportista para ver por qué no aparecen botones */}
+          {esRutaMultiple && !esTransportista && (
+            <View style={{backgroundColor: '#FFEBEE', padding: 8, borderRadius: 4, marginBottom: 8}}>
+              <Text style={{color: '#C62828', fontSize: 12}}>
+                ⚠️ DEBUG: esTransportista={String(esTransportista)} | tipo={userInfo?.tipo} | rol={userInfo?.rol_nombre}
+              </Text>
+            </View>
+          )}
+
           {/* Header */}
           <View style={styles.cardHeader}>
             <View style={styles.codigoContainer}>
-              <Text variant="titleLarge" style={styles.codigo}>{item.codigo || 'Sin código'}</Text>
+              <Text variant="titleLarge" style={[styles.codigo, esRutaMultiple && styles.codigoMulti]}>
+                {item.codigo || 'Sin código'}
+              </Text>
               <View style={styles.estadoRow}>
                 <Icon 
-                  name={getEstadoIcon(item.estado || 'pendiente')} 
+                  name={esRutaMultiple ? 'truck-delivery' : getEstadoIcon(item.estado || 'pendiente')} 
                   size={18} 
-                  color={getEstadoColor(item.estado || 'pendiente')} 
+                  color={esRutaMultiple ? '#7B1FA2' : getEstadoColor(item.estado || 'pendiente')} 
                 />
-                <Text style={[styles.estadoText, { color: getEstadoColor(item.estado || 'pendiente') }]}>
-                  {getEstadoTexto(item.estado || 'pendiente').toUpperCase()}
+                <Text style={[styles.estadoText, { color: esRutaMultiple ? '#7B1FA2' : getEstadoColor(item.estado || 'pendiente') }]}>
+                  {esRutaMultiple 
+                    ? (item.estado === 'programada' ? 'PENDIENTE ACEPTAR' : item.estado?.toUpperCase())
+                    : getEstadoTexto(item.estado || 'pendiente').toUpperCase()}
                 </Text>
               </View>
             </View>
             
-            <View style={styles.qrIconContainer}>
+            <View style={[styles.qrIconContainer, esRutaMultiple && styles.qrIconMulti]}>
               <Icon 
-                name="file-document-outline" 
+                name={esRutaMultiple ? "map-marker-multiple" : "file-document-outline"} 
                 size={28} 
-                color="#4CAF50" 
-                onPress={() => verDetalles(item.id)}
+                color={esRutaMultiple ? "#7B1FA2" : "#4CAF50"} 
+                onPress={() => esRutaMultiple 
+                  ? navigation.navigate('RutaMultiDetalle', { rutaId: itemId })
+                  : verDetalles(itemId)}
               />
             </View>
           </View>
@@ -316,6 +436,26 @@ export default function EnviosScreen({ navigation }) {
           </Text>
         </View>
 
+        {/* Info adicional para rutas multi-entrega */}
+        {esRutaMultiple && (
+          <>
+            <View style={styles.infoRow}>
+              <Icon name="map-marker-path" size={20} color="#7B1FA2" />
+              <Text style={[styles.infoText, {color: '#7B1FA2', fontWeight: '600'}]}>
+                {item.total_paradas || totalEnviosRuta} paradas en esta ruta
+              </Text>
+            </View>
+            {item.distancia_total_km && (
+              <View style={styles.infoRow}>
+                <Icon name="road-variant" size={20} color="#7B1FA2" />
+                <Text style={[styles.infoText, {color: '#7B1FA2'}]}>
+                  Distancia estimada: {parseFloat(item.distancia_total_km).toFixed(1)} km
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
         <View style={styles.divider} />
 
         {/* Footer con stats */}
@@ -331,9 +471,11 @@ export default function EnviosScreen({ navigation }) {
               <Text style={styles.statText}>{parseFloat(item.total_peso || 0).toFixed(2)}kg</Text>
             </View>
             
-            <View style={styles.precioContainer}>
-              <Text style={styles.precioLabel}>Total:</Text>
-              <Text style={styles.precioValue}>${parseFloat(item.total_precio || 0).toFixed(2)}</Text>
+            <View style={[styles.precioContainer, esRutaMultiple && styles.precioMulti]}>
+              <Text style={[styles.precioLabel, esRutaMultiple && {color: '#7B1FA2'}]}>Total:</Text>
+              <Text style={[styles.precioValue, esRutaMultiple && {color: '#7B1FA2'}]}>
+                Bs {parseFloat(item.total_precio || 0).toFixed(2)}
+              </Text>
             </View>
           </View>
         </View>
@@ -341,21 +483,22 @@ export default function EnviosScreen({ navigation }) {
         {/* Botones de acción para TRANSPORTISTA */}
         {esTransportista && (
           <View style={styles.actionsContainer}>
-            {item.estado === 'asignado' && (
+            {/* Botones para RUTA MULTI-ENTREGA */}
+            {esRutaMultiple && (item.estado === 'programada' || item.estado === 'asignado') && (
               <View style={styles.twoButtonsRow}>
                 <Button 
                   mode="contained" 
-                  onPress={() => handleAceptarAsignacion(item.id)}
+                  onPress={() => handleAceptarRutaMultiple(itemId)}
                   icon="check-circle"
                   style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
-                  buttonColor="#4CAF50"
+                  buttonColor="#7B1FA2"
                   compact
                 >
-                  Aceptar
+                  Aceptar Ruta
                 </Button>
                 <Button 
                   mode="outlined" 
-                  onPress={() => handleRechazarAsignacion(item.id)}
+                  onPress={() => handleRechazarRutaMultiple(itemId)}
                   icon="close-circle"
                   style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
                   textColor="#F44336"
@@ -366,11 +509,62 @@ export default function EnviosScreen({ navigation }) {
               </View>
             )}
 
-            {(item.estado === 'aceptado' || item.estado === 'en_transito') && (
+            {esRutaMultiple && (item.estado === 'aceptada' || item.estado === 'en_progreso') && (
               <View style={styles.twoButtonsRow}>
                 <Button 
                   mode="outlined" 
-                  onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+                  onPress={() => navigation.navigate('RutaMultiDetalle', { rutaId: itemId })}
+                  icon="map-marker-multiple"
+                  style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+                  textColor="#7B1FA2"
+                  compact
+                >
+                  Ver Paradas
+                </Button>
+                <Button 
+                  mode="contained" 
+                  onPress={() => navigation.navigate('RutaMultiTracking', { rutaId: itemId })}
+                  icon="navigation"
+                  style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+                  buttonColor="#7B1FA2"
+                  compact
+                >
+                  Iniciar Ruta
+                </Button>
+              </View>
+            )}
+
+            {/* Botones para ENVÍO NORMAL (no multi-entrega) */}
+            {!esRutaMultiple && item.estado === 'asignado' && (
+              <View style={styles.twoButtonsRow}>
+                <Button 
+                  mode="contained" 
+                  onPress={() => handleAceptarAsignacion(itemId)}
+                  icon="check-circle"
+                  style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+                  buttonColor="#4CAF50"
+                  compact
+                >
+                  Aceptar
+                </Button>
+                <Button 
+                  mode="outlined" 
+                  onPress={() => handleRechazarAsignacion(itemId)}
+                  icon="close-circle"
+                  style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+                  textColor="#F44336"
+                  compact
+                >
+                  Rechazar
+                </Button>
+              </View>
+            )}
+
+            {!esRutaMultiple && (item.estado === 'aceptado' || item.estado === 'en_transito') && (
+              <View style={styles.twoButtonsRow}>
+                <Button 
+                  mode="outlined" 
+                  onPress={() => navigation.navigate('EnvioDetalle', { envioId: itemId })}
                   icon="file-document-outline"
                   style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
                   textColor="#2196F3"
@@ -380,7 +574,7 @@ export default function EnviosScreen({ navigation }) {
                 </Button>
                 <Button 
                   mode="contained" 
-                  onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                  onPress={() => navigation.navigate('Tracking', { envioId: itemId })}
                   icon="map-marker-path"
                   style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
                   buttonColor="#9C27B0"
@@ -391,11 +585,11 @@ export default function EnviosScreen({ navigation }) {
               </View>
             )}
 
-            {item.estado === 'entregado' && (
+            {!esRutaMultiple && item.estado === 'entregado' && (
               <View style={styles.twoButtonsRow}>
                 <Button 
                   mode="outlined" 
-                  onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
+                  onPress={() => navigation.navigate('EnvioDetalle', { envioId: itemId })}
                   icon="file-document-outline"
                   style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
                   textColor="#2196F3"
@@ -405,7 +599,7 @@ export default function EnviosScreen({ navigation }) {
                 </Button>
                 <Button 
                   mode="contained" 
-                  onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                  onPress={() => navigation.navigate('Tracking', { envioId: itemId })}
                   icon="map-check"
                   style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
                   buttonColor="#4CAF50"
@@ -418,26 +612,58 @@ export default function EnviosScreen({ navigation }) {
           </View>
         )}
 
+        {/* BOTONES PARA RUTA MULTI-ENTREGA - SIEMPRE VISIBLES SI NO ES TRANSPORTISTA DETECTADO */}
+        {!esTransportista && esRutaMultiple && (item.estado === 'programada' || item.estado === 'asignado') && (
+          <View style={styles.actionsContainer}>
+            <View style={styles.twoButtonsRow}>
+              <Button 
+                mode="contained" 
+                onPress={() => handleAceptarRutaMultiple(itemId)}
+                icon="check-circle"
+                style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+                buttonColor="#7B1FA2"
+                compact
+              >
+                Aceptar Ruta
+              </Button>
+              <Button 
+                mode="outlined" 
+                onPress={() => handleRechazarRutaMultiple(itemId)}
+                icon="close-circle"
+                style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+                textColor="#F44336"
+                compact
+              >
+                Rechazar
+              </Button>
+            </View>
+          </View>
+        )}
+
         {/* Botones para ver detalles (usuarios no transportistas - ALMACÉN) */}
         {!esTransportista && (
           <View style={styles.actionsContainer}>
             <View style={styles.twoButtonsRow}>
               <Button 
                 mode="outlined" 
-                onPress={() => navigation.navigate('EnvioDetalle', { envioId: item.id })}
-                icon="file-document-outline"
+                onPress={() => esRutaMultiple 
+                  ? navigation.navigate('RutaMultiDetalle', { rutaId: itemId })
+                  : navigation.navigate('EnvioDetalle', { envioId: itemId })}
+                icon={esRutaMultiple ? "map-marker-multiple" : "file-document-outline"}
                 style={[styles.actionButton, { flex: 1, marginRight: 5, marginTop: 10 }]}
                 compact
               >
-                Ver Detalles
+                {esRutaMultiple ? 'Ver Paradas' : 'Ver Detalles'}
               </Button>
-              {(item.estado === 'en_transito' || item.estado === 'entregado') && (
+              {(item.estado === 'en_transito' || item.estado === 'entregado' || item.estado === 'en_progreso') && (
                 <Button 
                   mode="contained" 
-                  onPress={() => navigation.navigate('Tracking', { envioId: item.id })}
+                  onPress={() => esRutaMultiple 
+                    ? navigation.navigate('RutaMultiTracking', { rutaId: itemId })
+                    : navigation.navigate('Tracking', { envioId: itemId })}
                   icon="map-marker-path"
                   style={[styles.actionButton, { flex: 1, marginLeft: 5, marginTop: 10 }]}
-                  buttonColor="#9C27B0"
+                  buttonColor={esRutaMultiple ? "#7B1FA2" : "#9C27B0"}
                   compact
                 >
                   Ver Ruta
@@ -446,11 +672,11 @@ export default function EnviosScreen({ navigation }) {
             </View>
             
             {/* Botón para reportar incidente en pedidos entregados */}
-            {item.estado === 'entregado' && (
+            {!esRutaMultiple && item.estado === 'entregado' && (
               <Button 
                 mode="outlined" 
                 onPress={() => navigation.navigate('ReportarIncidente', { 
-                  envioId: item.id, 
+                  envioId: itemId, 
                   envioCode: item.codigo 
                 })}
                 icon="alert-circle"
@@ -496,7 +722,9 @@ export default function EnviosScreen({ navigation }) {
         renderItem={renderEnvio}
         keyExtractor={(item, index) => {
           try {
-            return item?.id?.toString() || `envio-${index}`;
+            // Para rutas multi-entrega el id puede venir como ruta_id
+            const itemId = item?.id || item?.ruta_id;
+            return itemId?.toString() || `envio-${index}`;
           } catch (e) {
             console.error('[EnviosScreen] Error en keyExtractor:', e);
             return `fallback-${index}`;
@@ -552,6 +780,27 @@ const styles = StyleSheet.create({
     elevation: 4,
     backgroundColor: 'white',
   },
+  cardMultiEntrega: {
+    borderWidth: 2,
+    borderColor: '#7B1FA2',
+    backgroundColor: '#FDFAFF',
+  },
+  multiEntregaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7B1FA2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  multiEntregaText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 12,
+    marginLeft: 6,
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -566,6 +815,9 @@ const styles = StyleSheet.create({
     color: '#2E7D32',
     marginBottom: 8,
   },
+  codigoMulti: {
+    color: '#7B1FA2',
+  },
   estadoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -579,6 +831,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E9',
     borderRadius: 12,
     padding: 10,
+  },
+  qrIconMulti: {
+    backgroundColor: '#F3E5F5',
   },
   divider: {
     height: 1,
@@ -624,6 +879,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+  },
+  precioMulti: {
+    backgroundColor: '#F3E5F5',
   },
   precioLabel: {
     fontSize: 13,
