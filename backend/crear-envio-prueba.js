@@ -1,41 +1,42 @@
-const { Client } = require('pg');
-
-const client = new Client({
-    host: 'localhost',
-    database: 'Plantalogistica',
-    user: 'postgres',
-    password: '140105'
-});
+const pool = require('./src/config/database');
 
 async function main() {
-    await client.connect();
+    const client = await pool.connect();
     
     try {
-        // Crear envío de prueba con estado 'aceptado'
-        const codigo = 'ENV-20251202-PRUEBA' + Date.now().toString().slice(-4);
+        await client.query('BEGIN');
+        
+        // Crear envío de prueba con estado 'asignado' (SIN ruta_entrega_id)
+        const codigo = 'ENV-PRUEBA-' + Date.now().toString().slice(-6);
         
         const result = await client.query(`
-            INSERT INTO envios (codigo, almacen_destino_id, estado, created_at, updated_at)
-            VALUES ($1, 1, 'aceptado', NOW(), NOW())
+            INSERT INTO envios (codigo, almacen_destino_id, estado, total_cantidad, total_peso, created_at, updated_at)
+            VALUES ($1, 2, 'asignado', 3, 5.5, NOW(), NOW())
             RETURNING id, codigo, estado
         `, [codigo]);
         
-        console.log('✅ Envío creado:', result.rows[0]);
+        console.log('📦 Envío creado:', result.rows[0]);
         
-        // Crear asignación al transportista
+        // Crear asignación al transportista 1
         await client.query(`
             INSERT INTO envio_asignaciones (envio_id, transportista_id, vehiculo_id, fecha_asignacion)
-            VALUES ($1, 8, 1, NOW())
+            VALUES ($1, 1, 1, NOW())
         `, [result.rows[0].id]);
         
-        console.log('✅ Asignación creada para transportista ID 8');
-        console.log('\n📱 Ahora el transportista puede aceptar e iniciar este envío desde la app móvil');
-        console.log('🌐 Ve a http://localhost:7000/rutas para ver el mapa en tiempo real');
+        await client.query('COMMIT');
+        
+        console.log('✅ Asignación creada para transportista ID 1');
+        console.log('\n📱 Ahora el transportista puede ver este envío en la app móvil');
+        console.log('   - Código:', result.rows[0].codigo);
+        console.log('   - Estado: asignado');
+        console.log('\n👉 Recarga la app (presiona R) para ver el nuevo envío');
         
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error:', error.message);
     } finally {
-        await client.end();
+        client.release();
+        process.exit(0);
     }
 }
 

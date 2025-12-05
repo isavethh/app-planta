@@ -11,6 +11,8 @@ class SocketService {
     this.socket = null;
     this.listeners = new Map();
     this.isConnecting = false;
+    this.connectionAttempts = 0;
+    this.maxAttempts = 3;
   }
 
   // Conectar al servidor
@@ -26,20 +28,29 @@ class SocketService {
         return this.socket;
       }
 
+      // Limitar intentos para no saturar
+      if (this.connectionAttempts >= this.maxAttempts) {
+        console.log('⚠️ [Socket] Máximo de intentos alcanzado, usando modo offline');
+        return null;
+      }
+
       this.isConnecting = true;
+      this.connectionAttempts++;
       console.log('🔌 [Socket] Conectando a:', SOCKET_URL);
       
       this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
         autoConnect: true,
         reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        timeout: 10000,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 2000,
+        timeout: 5000,
+        forceNew: true,
       });
 
       this.socket.on('connect', () => {
         this.isConnecting = false;
+        this.connectionAttempts = 0; // Resetear contador en conexión exitosa
         console.log('✅ [Socket] Conectado al servidor de tracking:', this.socket.id);
       });
 
@@ -50,13 +61,19 @@ class SocketService {
 
       this.socket.on('connect_error', (error) => {
         this.isConnecting = false;
-        console.error('⚠️ [Socket] Error de conexión:', error.message);
+        // Solo loguear warning, no error para evitar el popup rojo
+        console.warn('⚠️ [Socket] Error de conexión (continuando sin socket):', error.message);
+      });
+
+      this.socket.on('error', (error) => {
+        // Silenciar errores de socket para evitar crashes
+        console.warn('⚠️ [Socket] Error general:', error?.message || 'unknown');
       });
 
       return this.socket;
     } catch (error) {
       this.isConnecting = false;
-      console.error('⚠️ [Socket] Error al crear conexión:', error);
+      console.warn('⚠️ [Socket] Error al crear conexión:', error?.message || 'unknown');
       return null;
     }
   }
@@ -69,7 +86,7 @@ class SocketService {
         this.socket = null;
       }
     } catch (error) {
-      console.error('⚠️ [Socket] Error al desconectar:', error);
+      console.warn('⚠️ [Socket] Error al desconectar:', error?.message || 'unknown');
     }
   }
 

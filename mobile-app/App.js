@@ -39,6 +39,7 @@ import MisRutasScreen from './src/screens/MisRutasScreen';
 import RutaMultiEntregaScreen from './src/screens/RutaMultiEntregaScreen';
 import ChecklistSalidaScreen from './src/screens/ChecklistSalidaScreen';
 import ChecklistEntregaScreen from './src/screens/ChecklistEntregaScreen';
+import ResumenRutaScreen from './src/screens/ResumenRutaScreen';
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';
@@ -138,7 +139,7 @@ function AlmacenTabs() {
             } else if (route.name === 'Estadisticas') {
               iconName = 'chart-box';
             } else if (route.name === 'IA') {
-              iconName = 'brain';
+              iconName = 'chart-timeline-variant';
             } else if (route.name === 'Perfil') {
               iconName = 'account';
             }
@@ -426,6 +427,13 @@ export default function App() {
                 <Stack.Screen 
                   name="ChecklistEntrega" 
                   component={ChecklistEntregaScreen}
+                  options={{ 
+                    headerShown: false
+                  }}
+                />
+                <Stack.Screen 
+                  name="ResumenRuta" 
+                  component={ResumenRutaScreen}
                   options={{ 
                     headerShown: false
                   }}

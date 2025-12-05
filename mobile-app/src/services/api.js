@@ -287,9 +287,12 @@ export const rutasMultiService = {
   },
 
   // Iniciar una ruta
-  iniciarRuta: async (rutaId, ubicacion = {}) => {
+  iniciarRuta: async (rutaId) => {
     console.log(`🛣️ [API] Iniciando ruta: ${rutaId}`);
-    const response = await api.post(`/rutas-entrega/${rutaId}/iniciar`, ubicacion);
+    // Enviar objeto vacío explícitamente para evitar problemas de JSON
+    const body = {};
+    console.log(`🛣️ [API] Body a enviar:`, JSON.stringify(body));
+    const response = await api.post(`/rutas-entrega/${rutaId}/iniciar`, body);
     return response.data;
   },
 

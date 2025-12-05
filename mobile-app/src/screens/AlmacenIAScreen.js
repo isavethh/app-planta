@@ -100,9 +100,9 @@ export default function AlmacenIAScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Icon name="brain" size={40} color="#4CAF50" />
-        <Text style={styles.headerTitle}>Inteligencia Artificial</Text>
-        <Text style={styles.headerSubtitle}>Análisis de tu Almacén</Text>
+        <Icon name="chart-areaspline" size={40} color="#4CAF50" />
+        <Text style={styles.headerTitle}>Análisis Inteligente</Text>
+        <Text style={styles.headerSubtitle}>Insights de tu Almacén</Text>
       </View>
 
       {/* Banner de modo demo */}
@@ -210,7 +210,7 @@ export default function AlmacenIAScreen() {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Icon name="robot" size={16} color="#999" />
+        <Icon name="chart-timeline-variant" size={16} color="#999" />
         <Text style={styles.footerText}>
           Análisis basado en tus datos reales
         </Text>

@@ -13,6 +13,9 @@ router.get('/', rutasEntregaController.listarTodasRutas);
 // Estadísticas generales de rutas
 router.get('/estadisticas', rutasEntregaController.obtenerEstadisticasRutas);
 
+// Obtener todas las ubicaciones activas (para monitoreo web)
+router.get('/ubicaciones-activas', rutasEntregaController.obtenerUbicacionesActivas);
+
 // Obtener ruta por ID con detalles completos
 router.get('/:id', rutasEntregaController.obtenerRuta);
 
@@ -27,6 +30,12 @@ router.get('/:id/resumen', rutasEntregaController.obtenerResumenRuta);
 
 // Iniciar ruta (con checklist de salida)
 router.post('/:id/iniciar', rutasEntregaController.iniciarRuta);
+
+// Actualizar ubicación en tiempo real (para monitoreo)
+router.post('/:id/ubicacion', rutasEntregaController.actualizarUbicacion);
+
+// Obtener ubicación actual de una ruta
+router.get('/:id/ubicacion', rutasEntregaController.obtenerUbicacion);
 
 // Listar rutas por transportista
 router.get('/transportista/:transportista_id', rutasEntregaController.listarRutasPorTransportista);
@@ -47,15 +56,16 @@ router.put('/:ruta_id/paradas/reordenar', rutasEntregaController.reordenarParada
 // Obtener template de checklist (salida/entrega)
 router.get('/checklists/template/:tipo', rutasEntregaController.obtenerTemplateChecklist);
 
-// Guardar checklist completado
+// Guardar checklist completado (ambas rutas funcionan)
 router.post('/checklists', rutasEntregaController.guardarChecklist);
+router.post('/:id/checklists', rutasEntregaController.guardarChecklistConRutaId);
 
 // Obtener checklists (por ruta o parada)
 router.get('/checklists', rutasEntregaController.obtenerChecklist);
 
 // ==================== EVIDENCIAS ====================
 
-// Subir evidencia (foto)
+// Subir evidencia (foto) - múltiples rutas para compatibilidad
 router.post('/evidencias/upload', 
     rutasEntregaController.upload.single('foto'),
     rutasEntregaController.subirEvidencia
@@ -63,6 +73,9 @@ router.post('/evidencias/upload',
 
 // Guardar evidencia en base64
 router.post('/evidencias/base64', rutasEntregaController.guardarEvidenciaBase64);
+
+// Ruta alternativa para subir evidencia por parada
+router.post('/:ruta_id/paradas/:parada_id/evidencias', rutasEntregaController.guardarEvidenciaBase64);
 
 // Obtener evidencias
 router.get('/evidencias', rutasEntregaController.obtenerEvidencias);

@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const notaVentaController = require('./notaVentaController');
 
 // Configurar multer para subir fotos
 const storage = multer.diskStorage({
@@ -372,20 +373,8 @@ async function guardarChecklist(req, res) {
 
         const checklist = result.rows[0];
 
-        // Si es checklist de salida, actualizar estado de la ruta
-        if (tipo === 'salida' && ruta_entrega_id) {
-            await client.query(`
-                UPDATE rutas_entrega 
-                SET estado = 'en_transito', hora_salida = NOW()
-                WHERE id = $1
-            `, [ruta_entrega_id]);
-
-            // Actualizar estado de todos los envíos de la ruta
-            await client.query(`
-                UPDATE envios SET estado = 'en_transito', fecha_inicio_transito = NOW()
-                WHERE ruta_entrega_id = $1
-            `, [ruta_entrega_id]);
-        }
+        // NOTA: El cambio de estado a 'en_transito' se hace en iniciarRuta, no aquí
+        // para mantener el flujo: guardarChecklist -> iniciarRuta
 
         // Si es checklist de entrega, actualizar estado de la parada
         if (tipo === 'entrega' && ruta_parada_id) {
@@ -441,6 +430,15 @@ async function guardarChecklist(req, res) {
     } finally {
         client.release();
     }
+}
+
+// Guardar checklist con rutaId en la URL (wrapper para compatibilidad)
+async function guardarChecklistConRutaId(req, res) {
+    // Agregar el ruta_entrega_id del parámetro URL al body
+    req.body.ruta_entrega_id = parseInt(req.params.id);
+    
+    // Llamar a la función original
+    return guardarChecklist(req, res);
 }
 
 // Obtener checklist por ruta o parada
@@ -519,7 +517,11 @@ async function subirEvidencia(req, res) {
 // Guardar evidencia en base64
 async function guardarEvidenciaBase64(req, res) {
     try {
-        const { ruta_parada_id, checklist_id, tipo, nombre, base64 } = req.body;
+        // Aceptar parámetros de URL o del body
+        const ruta_parada_id = req.params.parada_id || req.body.ruta_parada_id;
+        const { checklist_id, tipo, nombre } = req.body;
+        // Aceptar tanto 'base64' como 'imagen_base64'
+        const base64 = req.body.base64 || req.body.imagen_base64;
 
         if (!base64) {
             return res.status(400).json({
@@ -591,15 +593,17 @@ async function registrarLlegada(req, res) {
         const { parada_id } = req.params;
         const { lat, lng } = req.body;
 
+        console.log(`[registrarLlegada] parada_id: ${parada_id}, lat: ${lat}, lng: ${lng}`);
+
         const result = await pool.query(`
             UPDATE ruta_paradas 
             SET estado = 'en_destino', 
-                hora_llegada = NOW(),
-                ubicacion_llegada_lat = $2,
-                ubicacion_llegada_lng = $3
+                hora_llegada = NOW()
             WHERE id = $1
             RETURNING *
-        `, [parada_id, lat || null, lng || null]);
+        `, [parada_id]);
+
+        console.log(`[registrarLlegada] Resultado:`, result.rows);
 
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -608,11 +612,13 @@ async function registrarLlegada(req, res) {
             });
         }
 
-        // Actualizar envío
-        await pool.query(`
-            UPDATE envios SET estado = 'en_destino'
-            WHERE id = $1
-        `, [result.rows[0].envio_id]);
+        // Actualizar envío si existe
+        if (result.rows[0].envio_id) {
+            await pool.query(`
+                UPDATE envios SET estado = 'en_destino'
+                WHERE id = $1
+            `, [result.rows[0].envio_id]);
+        }
 
         res.json({
             success: true,
@@ -620,6 +626,7 @@ async function registrarLlegada(req, res) {
             parada: result.rows[0]
         });
     } catch (error) {
+        console.error('[registrarLlegada] Error:', error);
         res.status(500).json({
             success: false,
             message: 'Error al registrar llegada',
@@ -692,6 +699,15 @@ async function completarEntrega(req, res) {
             }),
             firma_base64
         ]);
+
+        // Generar nota de venta automáticamente para el envío de la parada
+        try {
+            await notaVentaController.generarNotaVenta(parada.envio_id);
+            console.log(`✅ Nota de venta generada para envío ${parada.envio_id} (ruta múltiple)`);
+        } catch (notaError) {
+            console.error(`⚠️ Error al generar nota de venta para envío ${parada.envio_id}:`, notaError.message);
+            // No bloqueamos la entrega si falla la nota de venta
+        }
 
         // Verificar si ruta completada
         const estadoParadas = await client.query(`
@@ -880,9 +896,12 @@ async function obtenerEstadisticasRutas(req, res) {
             ${whereClause}
         `, params);
 
-        // Rutas activas (últimas 24 horas)
+        // Rutas activas (últimas 24 horas) con conteo de paradas
         const rutasActivas = await pool.query(`
-            SELECT r.*, u.name as transportista
+            SELECT r.*, 
+                   u.name as transportista,
+                   (SELECT COUNT(*) FROM ruta_paradas WHERE ruta_entrega_id = r.id) as total_paradas,
+                   (SELECT COUNT(*) FROM ruta_paradas WHERE ruta_entrega_id = r.id AND estado = 'entregado') as paradas_completadas
             FROM rutas_entrega r
             JOIN users u ON r.transportista_id = u.id
             WHERE r.estado = 'en_transito'
@@ -920,26 +939,32 @@ async function iniciarRuta(req, res) {
         `, [id]);
 
         if (rutaResult.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false,
                 message: 'Ruta no encontrada'
             });
         }
 
-        if (rutaResult.rows[0].estado !== 'pendiente') {
+        const estadoActual = rutaResult.rows[0].estado;
+        // La ruta puede estar 'pendiente' o 'aceptada' para poder iniciarla
+        if (estadoActual !== 'pendiente' && estadoActual !== 'aceptada') {
+            await client.query('ROLLBACK');
             return res.status(400).json({
                 success: false,
-                message: 'La ruta ya fue iniciada'
+                message: `La ruta no puede iniciarse. Estado actual: ${estadoActual}`
             });
         }
 
-        // Guardar checklist de salida
-        await client.query(`
-            INSERT INTO checklists (
-                ruta_entrega_id, tipo, datos, firma_base64, completado
-            )
-            VALUES ($1, 'salida', $2, $3, true)
-        `, [id, JSON.stringify(checklist_datos), firma_base64]);
+        // Solo guardar checklist si se proporcionan datos (para compatibilidad)
+        if (checklist_datos && firma_base64) {
+            await client.query(`
+                INSERT INTO checklists (
+                    ruta_entrega_id, tipo, datos, firma_base64, completado
+                )
+                VALUES ($1, 'salida', $2, $3, true)
+            `, [id, JSON.stringify(checklist_datos), firma_base64]);
+        }
 
         // Actualizar ruta
         await client.query(`
@@ -948,11 +973,13 @@ async function iniciarRuta(req, res) {
             WHERE id = $1
         `, [id]);
 
-        // Actualizar todos los envíos
+        // Actualizar todos los envíos asociados a esta ruta
         await client.query(`
             UPDATE envios 
             SET estado = 'en_transito', fecha_inicio_transito = NOW()
-            WHERE ruta_entrega_id = $1
+            WHERE id IN (
+                SELECT envio_id FROM ruta_paradas WHERE ruta_entrega_id = $1
+            )
         `, [id]);
 
         await client.query('COMMIT');
@@ -1155,6 +1182,146 @@ async function rechazarRuta(req, res) {
     }
 }
 
+// ==================== UBICACIÓN EN TIEMPO REAL ====================
+
+// Almacenamiento en memoria para ubicaciones (en producción usar Redis)
+const ubicacionesActivas = new Map();
+
+// Actualizar ubicación de una ruta (desde la app móvil)
+async function actualizarUbicacion(req, res) {
+    try {
+        const { id } = req.params;
+        const { latitud, longitud, parada_actual_index, en_simulacion, timestamp } = req.body;
+
+        console.log(`📍 [Ubicación] Ruta ${id}: lat=${latitud}, lng=${longitud}, parada=${parada_actual_index}`);
+
+        // Guardar en memoria
+        ubicacionesActivas.set(parseInt(id), {
+            ruta_id: parseInt(id),
+            latitud: parseFloat(latitud),
+            longitud: parseFloat(longitud),
+            parada_actual_index: parada_actual_index || 0,
+            en_simulacion: en_simulacion || false,
+            timestamp: timestamp || new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        });
+        
+        console.log(`📍 [Ubicación] Total rutas activas: ${ubicacionesActivas.size}`);
+
+        // También actualizar en la base de datos para persistencia
+        await pool.query(`
+            UPDATE rutas_entrega 
+            SET ultima_latitud = $2, 
+                ultima_longitud = $3,
+                ultima_actualizacion = NOW()
+            WHERE id = $1
+        `, [id, latitud, longitud]);
+
+        // Emitir evento WebSocket para actualización en tiempo real
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('ubicacion-actualizada', {
+                ruta_id: parseInt(id),
+                latitud: parseFloat(latitud),
+                longitud: parseFloat(longitud),
+                parada_actual_index,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Ubicación actualizada'
+        });
+    } catch (error) {
+        console.error('❌ Error al actualizar ubicación:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al actualizar ubicación',
+            error: error.message
+        });
+    }
+}
+
+// Obtener ubicación actual de una ruta
+async function obtenerUbicacion(req, res) {
+    try {
+        const { id } = req.params;
+        
+        // Primero intentar desde memoria (más reciente)
+        const ubicacionMemoria = ubicacionesActivas.get(parseInt(id));
+        
+        if (ubicacionMemoria) {
+            return res.json({
+                success: true,
+                ubicacion: ubicacionMemoria,
+                fuente: 'memoria'
+            });
+        }
+
+        // Si no está en memoria, buscar en DB
+        const result = await pool.query(`
+            SELECT id, ultima_latitud, ultima_longitud, ultima_actualizacion
+            FROM rutas_entrega 
+            WHERE id = $1
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ruta no encontrada'
+            });
+        }
+
+        const ruta = result.rows[0];
+
+        res.json({
+            success: true,
+            ubicacion: {
+                ruta_id: ruta.id,
+                latitud: ruta.ultima_latitud,
+                longitud: ruta.ultima_longitud,
+                timestamp: ruta.ultima_actualizacion
+            },
+            fuente: 'base_datos'
+        });
+    } catch (error) {
+        console.error('Error al obtener ubicación:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener ubicación',
+            error: error.message
+        });
+    }
+}
+
+// Obtener todas las ubicaciones activas (para monitoreo)
+async function obtenerUbicacionesActivas(req, res) {
+    try {
+        const ubicaciones = Array.from(ubicacionesActivas.values());
+        
+        console.log(`📡 [Monitoreo] Solicitando ubicaciones activas: ${ubicaciones.length} encontradas`);
+        if (ubicaciones.length > 0) {
+            ubicaciones.forEach(u => {
+                console.log(`   🚚 Ruta ${u.ruta_id}: lat=${u.latitud?.toFixed(4)}, lng=${u.longitud?.toFixed(4)}`);
+            });
+        }
+        
+        res.json({
+            success: true,
+            ubicaciones,
+            total: ubicaciones.length
+        });
+    } catch (error) {
+        console.error('❌ Error al obtener ubicaciones activas:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener ubicaciones activas',
+            error: error.message
+        });
+    }
+}
+
 module.exports = {
     // Rutas
     crearRuta,
@@ -1174,6 +1341,7 @@ module.exports = {
     // Checklists
     obtenerTemplateChecklist,
     guardarChecklist,
+    guardarChecklistConRutaId,
     obtenerChecklist,
     
     // Evidencias
@@ -1181,6 +1349,11 @@ module.exports = {
     guardarEvidenciaBase64,
     obtenerEvidencias,
     upload,
+    
+    // Ubicación en tiempo real
+    actualizarUbicacion,
+    obtenerUbicacion,
+    obtenerUbicacionesActivas,
     
     // Estadísticas
     obtenerEstadisticasRutas

@@ -19,9 +19,10 @@ import {
   ActivityIndicator,
   IconButton,
   Divider,
+  Portal,
+  Modal,
 } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import SignatureScreen from 'react-native-signature-canvas';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../context/AuthContext';
 import { rutasMultiService } from '../services/api';
@@ -40,7 +41,6 @@ const CHECKLIST_ITEMS = [
 export default function ChecklistEntregaScreen({ route, navigation }) {
   const { rutaId, paradaId, paradaNombre, envioId } = route.params || {};
   const { userInfo } = useContext(AuthContext);
-  const signatureRef = useRef(null);
   
   const [checklistData, setChecklistData] = useState(() => {
     const initial = {};
@@ -55,9 +55,13 @@ export default function ChecklistEntregaScreen({ route, navigation }) {
   
   const [observaciones, setObservaciones] = useState('');
   const [firma, setFirma] = useState(null);
+  const [fechaHoraFirma, setFechaHoraFirma] = useState('');
   const [fotos, setFotos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mostrarFirma, setMostrarFirma] = useState(false);
+
+  // Nombre del transportista
+  const nombreTransportista = userInfo?.name || userInfo?.nombre || 'Transportista';
 
   const toggleItem = (itemId) => {
     setChecklistData(prev => ({
@@ -66,13 +70,32 @@ export default function ChecklistEntregaScreen({ route, navigation }) {
     }));
   };
 
-  const handleFirmaOK = (signature) => {
-    setFirma(signature);
+  // Firma digital automática con texto de compromiso
+  const handleFirmarCompromiso = () => {
+    if (!nombreReceptor.trim()) {
+      Alert.alert('⚠️ Nombre Requerido', 'Primero ingresa el nombre del receptor');
+      setMostrarFirma(false);
+      return;
+    }
+
+    const fechaHora = new Date().toLocaleString('es-BO', {
+      timeZone: 'America/La_Paz',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    const textoFirma = `Yo, ${nombreReceptor}, confirmo haber recibido la mercadería en conformidad. Entregado por ${nombreTransportista}. Firmado el ${fechaHora}`;
+    setFirma(textoFirma);
+    setFechaHoraFirma(fechaHora);
     setMostrarFirma(false);
   };
 
   const handleLimpiarFirma = () => {
     setFirma(null);
+    setFechaHoraFirma('');
   };
 
   const tomarFoto = async () => {
@@ -178,14 +201,12 @@ export default function ChecklistEntregaScreen({ route, navigation }) {
 
       // Completar la entrega
       console.log('[ChecklistEntrega] Completando entrega...');
-      const response = await rutasMultiService.completarEntrega(rutaId, paradaId, {
+      const response = await rutasMultiService.completarEntrega(paradaId, {
         nombre_receptor: nombreReceptor,
         cargo_receptor: cargoReceptor,
         dni_receptor: dniReceptor,
         firma_base64: firma,
         observaciones,
-        latitud: null, // TODO: obtener ubicación real
-        longitud: null,
       });
 
       if (response.success) {
@@ -235,41 +256,74 @@ export default function ChecklistEntregaScreen({ route, navigation }) {
         </View>
       </Surface>
 
-      {/* Modal de firma */}
-      {mostrarFirma && (
-        <View style={styles.firmaOverlay}>
-          <View style={styles.firmaContainer}>
-            <View style={styles.firmaHeader}>
-              <Text style={styles.firmaTitle}>Firma del Receptor</Text>
-              <IconButton
-                icon="close"
-                size={24}
-                iconColor="#fff"
-                onPress={() => setMostrarFirma(false)}
-              />
+      {/* Modal de firma del receptor */}
+      <Portal>
+        <Modal
+          visible={mostrarFirma}
+          onDismiss={() => setMostrarFirma(false)}
+          contentContainerStyle={styles.modalContainer}
+        >
+          <View style={styles.firmaModalContent}>
+            <View style={styles.firmaModalHeader}>
+              <Icon name="file-sign" size={40} color="#4CAF50" />
+              <Text style={styles.firmaModalTitle}>Firma de Recepción</Text>
             </View>
-            <SignatureScreen
-              ref={signatureRef}
-              onOK={handleFirmaOK}
-              onEmpty={() => Alert.alert('Firma vacía', 'Por favor dibuja la firma')}
-              descriptionText="El receptor debe firmar aquí"
-              clearText="Limpiar"
-              confirmText="Confirmar"
-              webStyle={`.m-signature-pad { box-shadow: none; border: 1px solid #e0e0e0; }
-                        .m-signature-pad--body { border: none; }
-                        .m-signature-pad--footer { display: flex; justify-content: space-around; }`}
-              style={styles.signatureCanvas}
-            />
+            
+            <View style={styles.compromisoBox}>
+              <Text style={styles.compromisoTexto}>
+                "Yo, <Text style={styles.nombreDestacado}>{nombreReceptor || '[Nombre del Receptor]'}</Text>, confirmo haber recibido la mercadería en conformidad"
+              </Text>
+            </View>
+
+            <Text style={styles.transportistaInfo}>
+              Entregado por: <Text style={styles.nombreDestacado}>{nombreTransportista}</Text>
+            </Text>
+            
+            <Text style={styles.firmaInfo}>
+              Al presionar "Firmar", el receptor confirma la recepción conforme de la mercadería.
+            </Text>
+            
+            <View style={styles.firmaModalBotones}>
+              <Button
+                mode="outlined"
+                onPress={() => setMostrarFirma(false)}
+                style={styles.cancelarBtn}
+              >
+                Cancelar
+              </Button>
+              <Button
+                mode="contained"
+                icon="check-circle"
+                onPress={handleFirmarCompromiso}
+                style={styles.confirmarFirmaBtn}
+                buttonColor="#4CAF50"
+                disabled={!nombreReceptor.trim()}
+              >
+                Firmar
+              </Button>
+            </View>
           </View>
-        </View>
-      )}
+        </Modal>
+      </Portal>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Instrucciones para el transportista */}
+        <Card style={[styles.card, { backgroundColor: '#E3F2FD', borderLeftWidth: 4, borderLeftColor: '#2196F3' }]}>
+          <Card.Content>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="information" size={24} color="#2196F3" />
+              <Text style={{ marginLeft: 10, flex: 1, color: '#1565C0', fontWeight: '500' }}>
+                Entregue el dispositivo al receptor del almacén para que complete y firme este formulario.
+              </Text>
+            </View>
+          </Card.Content>
+        </Card>
+
         {/* Verificación de productos */}
         <Card style={styles.card}>
           <Card.Title 
             title="📋 Verificación de Productos" 
-            subtitle="Confirma cada punto con el receptor"
+            subtitle="El receptor debe confirmar cada punto"
           />
           <Card.Content>
             {CHECKLIST_ITEMS.map(item => (
@@ -384,28 +438,36 @@ export default function ChecklistEntregaScreen({ route, navigation }) {
           <Card.Title title="✍️ Firma del Receptor *" />
           <Card.Content>
             {firma ? (
-              <View style={styles.firmaPreview}>
-                <View style={styles.firmaImageContainer}>
-                  <Text style={styles.firmaPlaceholder}>Firma registrada ✓</Text>
-                </View>
+              <View style={styles.firmaCompletada}>
+                <Icon name="check-decagram" size={40} color="#4CAF50" />
+                <Text style={styles.firmaCompletadaTexto}>Firma digital registrada</Text>
+                <Text style={styles.firmaCompletadaNombre}>{nombreReceptor}</Text>
+                <Text style={styles.firmaFecha}>{fechaHoraFirma}</Text>
                 <Button
                   mode="outlined"
-                  icon="eraser"
+                  icon="refresh"
                   onPress={handleLimpiarFirma}
                   textColor="#F44336"
+                  style={{ marginTop: 10 }}
                 >
-                  Borrar y volver a firmar
+                  Volver a firmar
                 </Button>
               </View>
             ) : (
-              <Button
-                mode="outlined"
-                icon="draw"
-                onPress={() => setMostrarFirma(true)}
-                style={styles.firmarBtn}
-              >
-                Toque para que el receptor firme
-              </Button>
+              <View style={styles.firmaContainer}>
+                <Text style={styles.firmaInstruccion}>
+                  El receptor debe confirmar la recepción de la mercadería
+                </Text>
+                <Button
+                  mode="contained"
+                  icon="file-sign"
+                  onPress={() => setMostrarFirma(true)}
+                  style={styles.firmarBtn}
+                  buttonColor="#4CAF50"
+                >
+                  Tocar para Firmar
+                </Button>
+              </View>
             )}
           </Card.Content>
         </Card>
@@ -555,9 +617,105 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   firmarBtn: {
-    paddingVertical: 15,
-    borderStyle: 'dashed',
-    borderWidth: 2,
+    marginTop: 10,
+    borderRadius: 8,
+  },
+  firmaContainer: {
+    alignItems: 'center',
+    padding: 10,
+  },
+  firmaInstruccion: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  firmaCompletada: {
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+  },
+  firmaCompletadaTexto: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginTop: 8,
+  },
+  firmaCompletadaNombre: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 5,
+  },
+  firmaFecha: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
+  },
+  // Estilos del Modal de Firma
+  modalContainer: {
+    margin: 20,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  firmaModalContent: {
+    padding: 20,
+  },
+  firmaModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  firmaModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 10,
+  },
+  compromisoBox: {
+    backgroundColor: '#E8F5E9',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+  },
+  compromisoTexto: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 24,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  nombreDestacado: {
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    fontStyle: 'normal',
+  },
+  transportistaInfo: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  firmaInfo: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  firmaModalBotones: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  cancelarBtn: {
+    flex: 1,
+    borderColor: '#ccc',
+  },
+  confirmarFirmaBtn: {
+    flex: 1,
   },
   completarBtn: {
     borderRadius: 12,
@@ -569,37 +727,5 @@ const styles = StyleSheet.create({
   completarBtnLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  firmaOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 1000,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  firmaContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  firmaHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#4CAF50',
-  },
-  firmaTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginLeft: 10,
-  },
-  signatureCanvas: {
-    height: 300,
   },
 });

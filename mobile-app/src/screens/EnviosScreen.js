@@ -509,7 +509,7 @@ export default function EnviosScreen({ navigation }) {
               </View>
             )}
 
-            {esRutaMultiple && (item.estado === 'aceptada' || item.estado === 'en_progreso') && (
+            {esRutaMultiple && item.estado === 'aceptada' && (
               <View style={styles.twoButtonsRow}>
                 <Button 
                   mode="outlined" 
@@ -523,13 +523,38 @@ export default function EnviosScreen({ navigation }) {
                 </Button>
                 <Button 
                   mode="contained" 
-                  onPress={() => navigation.navigate('RutaMultiTracking', { rutaId: itemId })}
-                  icon="navigation"
+                  onPress={() => navigation.navigate('ChecklistSalida', { rutaId: itemId })}
+                  icon="clipboard-check"
                   style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
-                  buttonColor="#7B1FA2"
+                  buttonColor="#4CAF50"
                   compact
                 >
-                  Iniciar Ruta
+                  Checklist Salida
+                </Button>
+              </View>
+            )}
+
+            {esRutaMultiple && (item.estado === 'en_transito' || item.estado === 'en_progreso') && (
+              <View style={styles.twoButtonsRow}>
+                <Button 
+                  mode="outlined" 
+                  onPress={() => navigation.navigate('RutaMultiDetalle', { rutaId: itemId })}
+                  icon="map-marker-multiple"
+                  style={[styles.actionButton, { flex: 1, marginRight: 5 }]}
+                  textColor="#7B1FA2"
+                  compact
+                >
+                  Ver Paradas
+                </Button>
+                <Button 
+                  mode="contained" 
+                  onPress={() => navigation.navigate('RutaMultiEntrega', { rutaId: itemId })}
+                  icon="navigation"
+                  style={[styles.actionButton, { flex: 1, marginLeft: 5 }]}
+                  buttonColor="#9C27B0"
+                  compact
+                >
+                  Seguimiento
                 </Button>
               </View>
             )}

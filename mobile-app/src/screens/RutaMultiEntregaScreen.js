@@ -191,6 +191,22 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
   };
 
   // ===================== SIMULACIÓN =====================
+  // Enviar ubicación al backend para monitoreo en tiempo real
+  const enviarUbicacionAlBackend = async (lat, lng, paradaIndex) => {
+    try {
+      await rutasMultiService.actualizarUbicacion(ruta.id, {
+        latitud: lat,
+        longitud: lng,
+        parada_actual_index: paradaIndex,
+        en_simulacion: true,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      // Silenciar errores de ubicación para no interrumpir simulación
+      console.log('[Simulacion] Error enviando ubicación:', error.message);
+    }
+  };
+
   const iniciarSimulacion = () => {
     if (!ruta?.paradas?.length) {
       Alert.alert('Error', 'No hay paradas para simular');
@@ -204,8 +220,8 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
     const puntosRuta = [
       { lat: ORIGEN.latitude, lng: ORIGEN.longitude, nombre: 'Planta Principal' },
       ...ruta.paradas.sort((a, b) => a.orden - b.orden).map(p => ({
-        lat: parseFloat(p.latitud),
-        lng: parseFloat(p.longitud),
+        lat: parseFloat(p.latitud) || ORIGEN.latitude,
+        lng: parseFloat(p.longitud) || ORIGEN.longitude,
         nombre: p.almacen_nombre || `Parada ${p.orden}`,
         paradaId: p.id
       }))
@@ -213,11 +229,18 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
 
     let puntoActual = 0;
     let progreso = 0;
+    let contadorEnvio = 0;
 
     simulacionRef.current = setInterval(() => {
       if (puntoActual >= puntosRuta.length - 1) {
         clearInterval(simulacionRef.current);
         setSimulando(false);
+        // Notificar al backend que terminó
+        enviarUbicacionAlBackend(
+          puntosRuta[puntosRuta.length - 1].lat,
+          puntosRuta[puntosRuta.length - 1].lng,
+          puntosRuta.length - 1
+        );
         Alert.alert('✅ Simulación Completada', 'Has llegado a todas las paradas');
         return;
       }
@@ -243,6 +266,13 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
 
       setPosicionActual({ latitude: lat, longitude: lng });
       
+      // Enviar ubicación cada 5 iteraciones (cada 0.5 segundos aprox)
+      contadorEnvio++;
+      if (contadorEnvio >= 5) {
+        contadorEnvio = 0;
+        enviarUbicacionAlBackend(lat, lng, puntoActual);
+      }
+      
     }, 100);
   };
 
@@ -267,11 +297,15 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
     
     const coordenadas = [
       { latitude: ORIGEN.latitude, longitude: ORIGEN.longitude },
-      ...ruta.paradas.map(p => ({
-        latitude: parseFloat(p.latitud),
-        longitude: parseFloat(p.longitud),
-      }))
-    ];
+      ...ruta.paradas
+        .filter(p => p.latitud && p.longitud)
+        .map(p => ({
+          latitude: parseFloat(p.latitud) || ORIGEN.latitude,
+          longitude: parseFloat(p.longitud) || ORIGEN.longitude,
+        }))
+    ].filter(c => !isNaN(c.latitude) && !isNaN(c.longitude));
+    
+    if (coordenadas.length === 0) return;
     
     mapRef.current.fitToCoordinates(coordenadas, {
       edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
@@ -282,15 +316,22 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
   const construirRutaPolyline = () => {
     if (!ruta?.paradas?.length) return [];
     
-    return [
+    const puntos = [
       { latitude: ORIGEN.latitude, longitude: ORIGEN.longitude },
       ...ruta.paradas
         .sort((a, b) => a.orden - b.orden)
+        .filter(p => p.latitud && p.longitud) // Filtrar paradas sin coordenadas
         .map(p => ({
-          latitude: parseFloat(p.latitud),
-          longitude: parseFloat(p.longitud),
+          latitude: parseFloat(p.latitud) || ORIGEN.latitude,
+          longitude: parseFloat(p.longitud) || ORIGEN.longitude,
         }))
     ];
+    
+    // Filtrar puntos inválidos
+    return puntos.filter(p => 
+      !isNaN(p.latitude) && !isNaN(p.longitude) &&
+      p.latitude !== null && p.longitude !== null
+    );
   };
 
   const getEstadoColor = (estado) => {

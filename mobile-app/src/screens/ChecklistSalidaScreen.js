@@ -18,9 +18,10 @@ import {
   Surface,
   ActivityIndicator,
   IconButton,
+  Modal,
+  Portal,
 } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import SignatureScreen from 'react-native-signature-canvas';
 import { AuthContext } from '../context/AuthContext';
 import { rutasMultiService } from '../services/api';
 
@@ -45,7 +46,6 @@ const CHECKLIST_ITEMS = [
 export default function ChecklistSalidaScreen({ route, navigation }) {
   const { rutaId, rutaCodigo } = route.params || {};
   const { userInfo } = useContext(AuthContext);
-  const signatureRef = useRef(null);
   
   const [checklistData, setChecklistData] = useState({});
   const [observaciones, setObservaciones] = useState('');
@@ -53,6 +53,9 @@ export default function ChecklistSalidaScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [mostrarFirma, setMostrarFirma] = useState(false);
   const [todosVerificados, setTodosVerificados] = useState(false);
+
+  // Obtener nombre completo del transportista
+  const nombreTransportista = userInfo?.name || userInfo?.nombre || 'Transportista';
 
   // Inicializar checklist
   useEffect(() => {
@@ -76,13 +79,20 @@ export default function ChecklistSalidaScreen({ route, navigation }) {
     }));
   };
 
-  const handleFirmaOK = (signature) => {
-    setFirma(signature);
+  // Firma digital automática con texto de compromiso
+  const handleFirmarCompromiso = () => {
+    const fechaHora = new Date().toLocaleString('es-BO', {
+      timeZone: 'America/La_Paz',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    const textoFirma = `Yo, ${nombreTransportista}, me comprometo a llevar esta carga con responsabilidad. Firmado digitalmente el ${fechaHora}`;
+    setFirma(textoFirma);
     setMostrarFirma(false);
-  };
-
-  const handleFirmaClear = () => {
-    signatureRef.current?.clearSignature();
   };
 
   const handleLimpiarFirma = () => {
@@ -149,11 +159,8 @@ export default function ChecklistSalidaScreen({ route, navigation }) {
 
       console.log('[ChecklistSalida] Checklist guardado, iniciando ruta...');
 
-      // Iniciar ruta
-      const iniciarResponse = await rutasMultiService.iniciarRuta(rutaId, {
-        latitud: null, // TODO: obtener ubicación real
-        longitud: null,
-      });
+      // Iniciar ruta (sin enviar datos ya que el checklist ya fue guardado)
+      const iniciarResponse = await rutasMultiService.iniciarRuta(rutaId);
 
       if (!iniciarResponse.success) {
         throw new Error(iniciarResponse.message || 'Error al iniciar ruta');
@@ -234,33 +241,50 @@ export default function ChecklistSalidaScreen({ route, navigation }) {
         </View>
       </Surface>
 
-      {/* Modal de firma */}
-      {mostrarFirma && (
-        <View style={styles.firmaOverlay}>
-          <View style={styles.firmaContainer}>
-            <View style={styles.firmaHeader}>
-              <Text style={styles.firmaTitle}>Firma Digital</Text>
-              <IconButton
-                icon="close"
-                size={24}
-                onPress={() => setMostrarFirma(false)}
-              />
+      {/* Modal de firma digital */}
+      <Portal>
+        <Modal
+          visible={mostrarFirma}
+          onDismiss={() => setMostrarFirma(false)}
+          contentContainerStyle={styles.modalContainer}
+        >
+          <View style={styles.firmaModalContent}>
+            <View style={styles.firmaModalHeader}>
+              <Icon name="file-sign" size={40} color="#4CAF50" />
+              <Text style={styles.firmaModalTitle}>Firma Digital de Compromiso</Text>
             </View>
-            <SignatureScreen
-              ref={signatureRef}
-              onOK={handleFirmaOK}
-              onEmpty={() => Alert.alert('Firma vacía', 'Por favor dibuja tu firma')}
-              descriptionText="Firma aquí"
-              clearText="Limpiar"
-              confirmText="Confirmar"
-              webStyle={`.m-signature-pad { box-shadow: none; border: 1px solid #e0e0e0; }
-                        .m-signature-pad--body { border: none; }
-                        .m-signature-pad--footer { display: flex; justify-content: space-around; }`}
-              style={styles.signatureCanvas}
-            />
+            
+            <View style={styles.compromisoBox}>
+              <Text style={styles.compromisoTexto}>
+                "Yo, <Text style={styles.nombreDestacado}>{nombreTransportista}</Text>, me comprometo a llevar esta carga con responsabilidad"
+              </Text>
+            </View>
+            
+            <Text style={styles.firmaInfo}>
+              Al presionar "Firmar", aceptas este compromiso y se registrará tu firma digital con fecha y hora.
+            </Text>
+            
+            <View style={styles.firmaModalBotones}>
+              <Button
+                mode="outlined"
+                onPress={() => setMostrarFirma(false)}
+                style={styles.cancelarBtn}
+              >
+                Cancelar
+              </Button>
+              <Button
+                mode="contained"
+                icon="check-circle"
+                onPress={handleFirmarCompromiso}
+                style={styles.confirmarFirmaBtn}
+                buttonColor="#4CAF50"
+              >
+                Firmar
+              </Button>
+            </View>
           </View>
-        </View>
-      )}
+        </Modal>
+      </Portal>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Instrucciones */}
@@ -318,12 +342,13 @@ export default function ChecklistSalidaScreen({ route, navigation }) {
 
         {/* Firma */}
         <Card style={styles.firmaCard}>
-          <Card.Title title="✍️ Firma del Transportista" />
+          <Card.Title title="✍️ Firma Digital del Transportista" />
           <Card.Content>
             {firma ? (
               <View style={styles.firmaPreview}>
                 <View style={styles.firmaImageContainer}>
-                  <Text style={styles.firmaPlaceholder}>Firma registrada ✓</Text>
+                  <Icon name="check-decagram" size={32} color="#4CAF50" style={{marginBottom: 8}} />
+                  <Text style={styles.firmaTextoRegistrado}>{firma}</Text>
                 </View>
                 <Button
                   mode="outlined"
@@ -332,18 +357,21 @@ export default function ChecklistSalidaScreen({ route, navigation }) {
                   style={styles.limpiarFirmaBtn}
                   textColor="#F44336"
                 >
-                  Borrar y volver a firmar
+                  Borrar firma
                 </Button>
               </View>
             ) : (
-              <Button
-                mode="outlined"
-                icon="draw"
+              <TouchableOpacity
+                style={styles.firmarBtnContainer}
                 onPress={() => setMostrarFirma(true)}
-                style={styles.firmarBtn}
+                activeOpacity={0.7}
               >
-                Toque para firmar
-              </Button>
+                <Icon name="file-sign" size={40} color="#4CAF50" />
+                <Text style={styles.firmarBtnText}>Toque para firmar</Text>
+                <Text style={styles.firmarBtnSubtext}>
+                  Se registrará su compromiso de responsabilidad
+                </Text>
+              </TouchableOpacity>
             )}
           </Card.Content>
         </Card>
@@ -488,7 +516,7 @@ const styles = StyleSheet.create({
   },
   firmaImageContainer: {
     width: '100%',
-    height: 100,
+    padding: 15,
     backgroundColor: '#E8F5E9',
     borderRadius: 8,
     justifyContent: 'center',
@@ -496,7 +524,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 2,
     borderColor: '#4CAF50',
-    borderStyle: 'dashed',
+  },
+  firmaTextoRegistrado: {
+    fontSize: 14,
+    color: '#2E7D32',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   firmaPlaceholder: {
     fontSize: 16,
@@ -506,10 +539,26 @@ const styles = StyleSheet.create({
   limpiarFirmaBtn: {
     borderColor: '#F44336',
   },
-  firmarBtn: {
-    paddingVertical: 20,
-    borderStyle: 'dashed',
+  firmarBtnContainer: {
+    paddingVertical: 25,
+    paddingHorizontal: 15,
     borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#4CAF50',
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#F1F8E9',
+  },
+  firmarBtnText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginTop: 8,
+  },
+  firmarBtnSubtext: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
   },
   guardarBtn: {
     borderRadius: 12,
@@ -522,36 +571,61 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  firmaOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 1000,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  firmaContainer: {
-    backgroundColor: '#fff',
+  // Estilos del modal de firma
+  modalContainer: {
+    margin: 20,
+    backgroundColor: 'white',
     borderRadius: 16,
     overflow: 'hidden',
   },
-  firmaHeader: {
+  firmaModalContent: {
+    padding: 20,
+  },
+  firmaModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  firmaModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 10,
+  },
+  compromisoBox: {
+    backgroundColor: '#F5F5F5',
+    padding: 20,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+    marginBottom: 15,
+  },
+  compromisoTexto: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 24,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  nombreDestacado: {
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  firmaInfo: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  firmaModalBotones: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#4CAF50',
   },
-  firmaTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+  cancelarBtn: {
+    flex: 1,
+    marginRight: 10,
+  },
+  confirmarFirmaBtn: {
+    flex: 1,
     marginLeft: 10,
-  },
-  signatureCanvas: {
-    height: 300,
   },
 });
