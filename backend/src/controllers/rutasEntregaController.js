@@ -799,7 +799,8 @@ async function obtenerResumenRuta(req, res) {
             SELECT p.*,
                    e.codigo as envio_codigo,
                    e.total_peso, e.total_cantidad, e.total_precio,
-                   a.nombre as almacen_nombre, a.direccion as almacen_direccion
+                   a.nombre as almacen_nombre, 
+                   COALESCE(a.direccion_completa, a.direccion, '') as almacen_direccion
             FROM ruta_paradas p
             JOIN envios e ON p.envio_id = e.id
             JOIN almacenes a ON e.almacen_destino_id = a.id

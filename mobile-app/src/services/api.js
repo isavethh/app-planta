@@ -294,16 +294,16 @@ export const rutasMultiService = {
   },
 
   // Registrar llegada a una parada
-  registrarLlegada: async (rutaId, paradaId, ubicacion = {}) => {
+  registrarLlegada: async (paradaId, ubicacion = {}) => {
     console.log(`🛣️ [API] Registrando llegada a parada: ${paradaId}`);
-    const response = await api.post(`/rutas-entrega/${rutaId}/paradas/${paradaId}/llegada`, ubicacion);
+    const response = await api.post(`/rutas-entrega/paradas/${paradaId}/llegada`, ubicacion);
     return response.data;
   },
 
   // Completar entrega en una parada
-  completarEntrega: async (rutaId, paradaId, datosEntrega) => {
+  completarEntrega: async (paradaId, datosEntrega) => {
     console.log(`🛣️ [API] Completando entrega en parada: ${paradaId}`);
-    const response = await api.post(`/rutas-entrega/${rutaId}/paradas/${paradaId}/entregar`, datosEntrega);
+    const response = await api.post(`/rutas-entrega/paradas/${paradaId}/entregar`, datosEntrega);
     return response.data;
   },
 

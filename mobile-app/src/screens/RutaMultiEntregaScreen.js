@@ -61,6 +61,7 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
   const [paradaActualIndex, setParadaActualIndex] = useState(-1);
   const simulacionRef = useRef(null);
   const [mostrarMapa, setMostrarMapa] = useState(true);
+  const [simulacionExpandida, setSimulacionExpandida] = useState(false);
 
   const cargarRuta = async () => {
     try {
@@ -134,7 +135,7 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
   const handleRegistrarLlegada = async (parada) => {
     Alert.alert(
       '📍 Registrar Llegada',
-      `¿Confirmar llegada a ${parada.almacen_nombre}?`,
+      `¿Confirmar llegada a ${parada.almacen_nombre || 'esta parada'}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -142,9 +143,9 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
           onPress: async () => {
             try {
               setProcesando(true);
-              const response = await rutasMultiService.registrarLlegada(ruta.id, parada.id, {
-                latitud: null, // TODO: obtener ubicación real
-                longitud: null,
+              const response = await rutasMultiService.registrarLlegada(parada.id, {
+                lat: posicionActual?.latitude,
+                lng: posicionActual?.longitude,
               });
               
               if (response.success) {
@@ -468,59 +469,73 @@ export default function RutaMultiEntregaScreen({ route, navigation }) {
             )}
           </MapView>
 
-          {/* Control de Simulación superpuesto */}
-          <View style={styles.simulacionControl}>
-            <Text style={styles.simulacionTitulo}>🎮 Simulación</Text>
+          {/* Control de Simulación plegable */}
+          <View style={[styles.simulacionControl, !simulacionExpandida && styles.simulacionColapsada]}>
+            <TouchableOpacity 
+              style={styles.simulacionHeader}
+              onPress={() => setSimulacionExpandida(!simulacionExpandida)}
+            >
+              <Text style={styles.simulacionTitulo}>🎮 Simulación</Text>
+              <Icon 
+                name={simulacionExpandida ? "chevron-down" : "chevron-up"} 
+                size={20} 
+                color="#333" 
+              />
+            </TouchableOpacity>
             
-            <View style={styles.velocidadContainer}>
-              <Text style={styles.velocidadLabel}>Velocidad: {velocidadSimulacion.toFixed(1)}x</Text>
-              <Slider
-                style={styles.slider}
-                minimumValue={0.5}
-                maximumValue={10}
-                step={0.5}
-                value={velocidadSimulacion}
-                onValueChange={setVelocidadSimulacion}
-                minimumTrackTintColor="#4CAF50"
-                maximumTrackTintColor="#ccc"
-                thumbTintColor="#4CAF50"
-              />
-            </View>
+            {simulacionExpandida && (
+              <>
+                <View style={styles.velocidadContainer}>
+                  <Text style={styles.velocidadLabel}>Velocidad: {velocidadSimulacion.toFixed(1)}x</Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={0.5}
+                    maximumValue={10}
+                    step={0.5}
+                    value={velocidadSimulacion}
+                    onValueChange={setVelocidadSimulacion}
+                    minimumTrackTintColor="#4CAF50"
+                    maximumTrackTintColor="#ccc"
+                    thumbTintColor="#4CAF50"
+                  />
+                </View>
 
-            <View style={styles.simulacionBotones}>
-              {!simulando ? (
-                <Button 
-                  mode="contained" 
-                  icon="play" 
-                  onPress={iniciarSimulacion}
-                  compact
-                  buttonColor="#4CAF50"
-                  style={styles.botonSimular}
-                >
-                  Iniciar
-                </Button>
-              ) : (
-                <Button 
-                  mode="contained" 
-                  icon="pause" 
-                  onPress={detenerSimulacion}
-                  compact
-                  buttonColor="#FF9800"
-                  style={styles.botonSimular}
-                >
-                  Pausar
-                </Button>
-              )}
-              
-              <IconButton
-                icon="refresh"
-                mode="contained"
-                iconColor="#fff"
-                containerColor="#9E9E9E"
-                size={20}
-                onPress={resetearSimulacion}
-              />
-            </View>
+                <View style={styles.simulacionBotones}>
+                  {!simulando ? (
+                    <Button 
+                      mode="contained" 
+                      icon="play" 
+                      onPress={iniciarSimulacion}
+                      compact
+                      buttonColor="#4CAF50"
+                      style={styles.botonSimular}
+                    >
+                      Iniciar
+                    </Button>
+                  ) : (
+                    <Button 
+                      mode="contained" 
+                      icon="pause" 
+                      onPress={detenerSimulacion}
+                      compact
+                      buttonColor="#FF9800"
+                      style={styles.botonSimular}
+                    >
+                      Pausar
+                    </Button>
+                  )}
+                  
+                  <IconButton
+                    icon="refresh"
+                    mode="contained"
+                    iconColor="#fff"
+                    containerColor="#9E9E9E"
+                    size={20}
+                    onPress={resetearSimulacion}
+                  />
+                </View>
+              </>
+            )}
             
             {simulando && (
               <Text style={styles.simulacionInfo}>
@@ -1052,6 +1067,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
     elevation: 5,
+  },
+  simulacionColapsada: {
+    padding: 0,
+  },
+  simulacionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
   },
   simulacionTitulo: {
     fontSize: 14,

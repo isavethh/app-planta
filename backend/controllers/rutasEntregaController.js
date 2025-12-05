@@ -70,7 +70,8 @@ async function crearRuta(req, res) {
         const enviosData = await client.query(`
             SELECT e.id, e.codigo, 
                    a.latitud::float as lat, a.longitud::float as lng,
-                   a.nombre as destino_nombre, a.direccion as destino_direccion
+                   a.nombre as destino_nombre, 
+                   COALESCE(a.direccion_completa, '') as destino_direccion
             FROM envios e
             JOIN almacenes a ON e.almacen_destino_id = a.id
             WHERE e.id = ANY($1)
@@ -801,7 +802,8 @@ async function obtenerResumenRuta(req, res) {
             SELECT p.*,
                    e.codigo as envio_codigo,
                    e.total_peso, e.total_cantidad, e.total_precio,
-                   a.nombre as almacen_nombre, a.direccion as almacen_direccion
+                   a.nombre as almacen_nombre, 
+                   COALESCE(a.direccion_completa, '') as almacen_direccion
             FROM ruta_paradas p
             JOIN envios e ON p.envio_id = e.id
             JOIN almacenes a ON e.almacen_destino_id = a.id
