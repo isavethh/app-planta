@@ -32,21 +32,37 @@ export default function PerfilScreen() {
   const cargarEstadisticas = async () => {
     try {
       setLoading(true);
-      const envios = await envioService.getAll();
       
-      // Filtrar por usuario
-      const misEnvios = envios.filter(e => 
-        (userInfo.almacen_id && e.almacen_destino_id == userInfo.almacen_id) ||
-        (userInfo.transportista_id && e.transportista_id == userInfo.transportista_id)
-      );
+      let misEnvios = [];
+      
+      // Si es transportista, usar el endpoint específico
+      if (esTransportista && userInfo.id) {
+        try {
+          misEnvios = await envioService.getByTransportista(userInfo.id);
+          misEnvios = Array.isArray(misEnvios) ? misEnvios : [];
+        } catch (error) {
+          console.error('Error al cargar envíos del transportista:', error);
+          misEnvios = [];
+        }
+      } else if (userInfo.almacen_id) {
+        // Si es almacén, usar getAll con filtro
+        try {
+          const envios = await envioService.getAll(userInfo.almacen_id);
+          misEnvios = Array.isArray(envios) ? envios.filter(e => e.almacen_destino_id == userInfo.almacen_id) : [];
+        } catch (error) {
+          console.error('Error al cargar envíos del almacén:', error);
+          misEnvios = [];
+        }
+      }
 
       const total = misEnvios.length;
-      const enTransito = misEnvios.filter(e => e.estado === 'en_transito' || e.estado === 'asignado').length;
+      const enTransito = misEnvios.filter(e => e.estado === 'en_transito' || e.estado === 'asignado' || e.estado === 'aceptado').length;
       const completados = misEnvios.filter(e => e.estado === 'entregado').length;
 
       setStats({ total, enTransito, completados });
     } catch (error) {
       console.error('Error al cargar estadísticas:', error);
+      setStats({ total: 0, enTransito: 0, completados: 0 });
     } finally {
       setLoading(false);
     }

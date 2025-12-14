@@ -2,21 +2,27 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// URL del backend - CONECTADO A NODE.JS (puerto 3001)
-// Node.js consulta PostgreSQL (BD: Plantalogistica)
-// IMPORTANTE: Asegúrate de que Node.js esté corriendo en puerto 3001
+// URL del backend - CONECTADO A LARAVEL (puerto 8001)
+// IP de WiFi: 192.168.0.129
 export const API_URL = Platform.OS === 'web' 
-  ? 'http://localhost:3001/api'  // Para web
-  : 'http://192.168.0.129:3001/api'; // ✅ IP CORRECTA DE TU PC EN NUEVO WIFI
+  ? 'http://localhost:8001/api'  // Para web
+  : 'http://192.168.0.129:8001/api'; // ✅ IP WiFi actual
 
 console.log('🌐 [API] URL configurada:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000, // 15 segundos de timeout
+  timeout: 30000, // 30 segundos (aumentado para dar más tiempo a respuestas lentas)
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
+  // Configuración adicional para conexiones de red
+  validateStatus: function (status) {
+    return status >= 200 && status < 500; // Aceptar respuestas 2xx, 3xx y 4xx
+  },
+  // Configuración para React Native
+  adapter: undefined, // Usar el adapter por defecto de React Native
 });
 
 // Interceptor para agregar token a todas las peticiones
@@ -36,16 +42,42 @@ api.interceptors.request.use(
 );
 
 // Interceptor para manejar respuestas y errores
+let lastNetworkErrorTime = 0;
 api.interceptors.response.use(
   (response) => {
     console.log(`📥 [API] Respuesta OK: ${response.config.url}`);
     return response;
   },
   (error) => {
+    const now = Date.now();
+    // Solo loguear errores de red una vez cada 5 segundos para no saturar
     if (error.code === 'ECONNABORTED') {
-      console.error('❌ [API] Timeout - El servidor no respondió a tiempo');
+      if (now - lastNetworkErrorTime > 5000) {
+        console.error('❌ [API] Timeout - El servidor no respondió en 3 segundos');
+        lastNetworkErrorTime = now;
+      }
     } else if (error.code === 'ERR_NETWORK') {
-      console.error('❌ [API] Error de red - No se puede conectar al servidor');
+      if (now - lastNetworkErrorTime > 5000) {
+        console.error('❌ [API] Error de red - No se puede conectar al servidor');
+        console.error(`   URL: ${API_URL}`);
+        console.error(`   Verifica: 1) Laravel corriendo en 0.0.0.0:8001`);
+        console.error(`             2) IP correcta en api.js (actual: ${API_URL})`);
+        console.error(`             3) Misma red WiFi`);
+        console.error(`             4) Firewall puerto 8001 abierto`);
+        lastNetworkErrorTime = now;
+      }
+    } else if (error.response) {
+      // Error de respuesta del servidor (4xx, 5xx)
+      const status = error.response.status;
+      const message = error.response.data?.error || error.response.data?.message || error.message;
+      
+      if (status === 500) {
+        console.error(`❌ [API] Error 500 del servidor: ${message}`);
+        console.error(`   URL: ${error.config?.url}`);
+        console.error(`   Método: ${error.config?.method?.toUpperCase()}`);
+      } else {
+        console.error(`❌ [API] Error ${status}: ${message}`);
+      }
     } else {
       console.error('❌ [API] Error:', error.message);
     }
@@ -97,17 +129,18 @@ export const publicService = {
 // Servicios de transportista
 export const transportistaService = {
   getById: async (id) => {
-    const response = await api.get(`/transportista/${id}`);
+    const response = await api.get(`/transportistas/${id}`);
     return response.data;
   },
 
   getEnviosAsignados: async (transportistaId) => {
+    // Ruta correcta en Laravel: /api/transportista/{id}/envios
     const response = await api.get(`/transportista/${transportistaId}/envios`);
     return response.data;
   },
 
   cambiarDisponibilidad: async (transportistaId, disponible) => {
-    const response = await api.put(`/transportista/${transportistaId}/disponibilidad`, { disponible });
+    const response = await api.put(`/transportistas/${transportistaId}/disponibilidad`, { disponible });
     return response.data;
   },
 };
@@ -175,22 +208,104 @@ export const envioService = {
   },
 
   marcarEntregado: async (id) => {
-    const response = await api.post(`/envios/${id}/entregar`);
-    return response.data;
+    console.log(`📦 [API] Marcando envío ${id} como entregado...`);
+    try {
+      const response = await api.post(`/envios/${id}/entregado`, {}, {
+        timeout: 30000, // 30 segundos específico para esta operación
+      });
+      console.log(`✅ [API] Envío ${id} marcado como entregado exitosamente`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ [API] Error marcando envío ${id} como entregado:`, error.message);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Timeout: El servidor no respondió a tiempo. Verifica tu conexión.');
+      } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network request failed')) {
+        throw new Error('Error de red: No se puede conectar al servidor. Verifica que Laravel esté corriendo en 0.0.0.0:8001');
+      }
+      throw error;
+    }
   },
 
   getByTransportista: async (transportistaId) => {
-    try {
-      console.log(`🚚 [API] Obteniendo envíos para transportista ID: ${transportistaId}`);
-      const response = await api.get(`/envios/transportista/${transportistaId}`);
-      console.log(`✅ [API] Envíos obtenidos:`, response.data?.data?.length || 0);
-      // La API devuelve {success: true, data: [...]}
-      return response.data?.data || response.data || [];
-    } catch (error) {
-      console.error(`❌ [API] Error obteniendo envíos del transportista:`, error.message);
-      // Devolver array vacío en lugar de lanzar error
-      return [];
+    const url = `${API_URL}/transportista/${transportistaId}/envios`;
+    console.log(`🚚 [API] Obteniendo envíos para transportista ID: ${transportistaId}`);
+    console.log(`🌐 [API] URL completa: ${url}`);
+    
+    // Intentar múltiples veces con diferentes métodos
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`🔄 [API] Intento ${attempt}/${maxRetries}`);
+      
+      try {
+        // Método 1: Usar axios directamente (más confiable en React Native)
+        const response = await api.get(`/transportista/${transportistaId}/envios`, {
+          timeout: 15000, // 15 segundos
+          validateStatus: (status) => status < 500, // Aceptar 4xx pero no 5xx
+        });
+        
+        console.log(`📥 [API] Status: ${response.status}`);
+        
+        if (response.status === 200 && response.data) {
+          const data = response.data;
+          console.log(`✅ [API] Envíos obtenidos:`, data?.data?.length || 0);
+          return data?.data || data || [];
+        } else if (response.status === 404) {
+          console.log(`⚠️ [API] Transportista no encontrado o sin envíos`);
+          return [];
+        } else {
+          console.warn(`⚠️ [API] Status ${response.status}, reintentando...`);
+          lastError = new Error(`HTTP ${response.status}`);
+          continue;
+        }
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ [API] Intento ${attempt} falló:`, error.message);
+        
+        if (error.code === 'ECONNABORTED') {
+          console.error(`⏱️ [API] Timeout - El servidor no respondió a tiempo`);
+        } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network request failed')) {
+          console.error(`🌐 [API] Error de red - Verificando conectividad...`);
+          
+          // Intentar ping primero
+          try {
+            const pingResponse = await api.get('/ping', { timeout: 5000 });
+            if (pingResponse.status === 200) {
+              console.log(`✅ [API] Ping exitoso, reintentando endpoint...`);
+              continue; // Reintentar
+            }
+          } catch (pingError) {
+            console.error(`❌ [API] Ping también falló - Problema de conectividad`);
+            console.error(`   URL base: ${API_URL}`);
+            console.error(`   Verifica:`);
+            console.error(`   1. Mismo WiFi en móvil y PC`);
+            console.error(`   2. Firewall puerto 8001 abierto`);
+            console.error(`   3. Laravel corriendo: php artisan serve --host=0.0.0.0 --port=8001`);
+            
+            // Si es el último intento, devolver vacío
+            if (attempt === maxRetries) {
+              return [];
+            }
+          }
+        }
+        
+        // Esperar antes de reintentar (exponential backoff)
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(`⏳ [API] Esperando ${delay}ms antes de reintentar...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+    
+    // Si llegamos aquí, todos los intentos fallaron
+    console.error(`❌ [API] Todos los intentos fallaron`);
+    if (lastError) {
+      console.error(`   Último error:`, lastError.message);
+    }
+    return [];
   },
 
   // Alias para compatibilidad con EnviosScreen
@@ -226,17 +341,17 @@ export const almacenService = {
     return response.data?.data || [];
   },
 
-  // Obtener notas de venta de un almacén
+  // Obtener notas de entrega de un almacén
   getNotasVentaAlmacen: async (almacenId) => {
-    console.log(`📄 [API] Obteniendo notas de venta del almacén: ${almacenId}`);
+    console.log(`📄 [API] Obteniendo notas de entrega del almacén: ${almacenId}`);
     const response = await api.get(`/almacen-app/${almacenId}/notas-venta`);
-    console.log(`✅ [API] Notas de venta recibidas:`, response.data?.data?.length || 0);
+    console.log(`✅ [API] Notas de entrega recibidas:`, response.data?.data?.length || 0);
     return response.data?.data || [];
   },
 
-  // Obtener detalles de una nota de venta específica
+  // Obtener detalles de una nota de entrega específica
   getNotaVentaDetalle: async (notaVentaId) => {
-    console.log(`📄 [API] Obteniendo detalles de nota de venta: ${notaVentaId}`);
+    console.log(`📄 [API] Obteniendo detalles de nota de entrega: ${notaVentaId}`);
     const response = await api.get(`/almacen-app/nota-venta/${notaVentaId}`);
     return response.data?.data || null;
   },
@@ -313,7 +428,21 @@ export const rutasMultiService = {
   // Guardar checklist (salida o entrega)
   guardarChecklist: async (rutaId, checklistData) => {
     console.log(`🛣️ [API] Guardando checklist tipo: ${checklistData.tipo}`);
-    const response = await api.post(`/rutas-entrega/${rutaId}/checklists`, checklistData);
+    
+    // Si no hay rutaId pero hay envio_id, es un envío normal
+    if (!rutaId && checklistData.envio_id) {
+      const response = await api.post(`/rutas-entrega/checklists`, checklistData);
+      return response.data;
+    }
+    
+    // Si hay rutaId, es una ruta múltiple
+    if (rutaId) {
+      const response = await api.post(`/rutas-entrega/${rutaId}/checklists`, checklistData);
+      return response.data;
+    }
+    
+    // Fallback: intentar sin rutaId
+    const response = await api.post(`/rutas-entrega/checklists`, checklistData);
     return response.data;
   },
 
@@ -321,6 +450,13 @@ export const rutasMultiService = {
   subirEvidencia: async (rutaId, paradaId, evidencia) => {
     console.log(`🛣️ [API] Subiendo evidencia para parada: ${paradaId}`);
     const response = await api.post(`/rutas-entrega/${rutaId}/paradas/${paradaId}/evidencias`, evidencia);
+    return response.data;
+  },
+
+  // Guardar evidencia en base64 (para envíos normales o rutas múltiples)
+  guardarEvidenciaBase64: async (evidenciaData) => {
+    console.log(`🛣️ [API] Guardando evidencia base64`);
+    const response = await api.post(`/rutas-entrega/evidencias/base64`, evidenciaData);
     return response.data;
   },
 
@@ -363,4 +499,3 @@ export const incidenteService = {
 };
 
 export default api;
-

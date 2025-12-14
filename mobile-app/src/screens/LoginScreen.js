@@ -221,9 +221,9 @@ export default function LoginScreen() {
                         label={`-- Selecciona ${tipoUsuario === 'almacen' ? 'un almacén' : 'un transportista'} --`} 
                         value="" 
                       />
-                      {listaActual.map((item) => (
+                      {listaActual.map((item, index) => (
                         <Picker.Item
-                          key={item.id}
+                          key={`${tipoUsuario}-${item.id}-${index}`}
                           label={tipoUsuario === 'almacen' 
                             ? item.nombre 
                             : `${item.nombre} (${item.email})`

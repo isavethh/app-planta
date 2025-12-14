@@ -17,7 +17,7 @@ export default function AlmacenNotasVentaScreen({ navigation }) {
 
   const cargarNotasVenta = async () => {
     try {
-      console.log('📄 [AlmacenNotasVenta] Cargando notas de venta para almacén:', userInfo?.id);
+      console.log('📄 [AlmacenNotasVenta] Cargando notas de entrega para almacén:', userInfo?.id);
       setLoading(true);
       const data = await almacenService.getNotasVentaAlmacen(userInfo.id);
       console.log('✅ [AlmacenNotasVenta] Notas cargadas:', data?.length || 0);
@@ -111,7 +111,7 @@ export default function AlmacenNotasVentaScreen({ navigation }) {
         <TouchableOpacity
           style={styles.verButton}
           onPress={() => {
-            const notaUrl = `http://192.168.0.129:3001/api/envios/${item.envio_id}/nota-venta`;
+            const notaUrl = `http://192.168.0.129:8001/api/envios/${item.envio_id}/nota-venta`;
             navigation.navigate('DocumentoEnvio', { 
               documentURL: notaUrl,
               codigo: item.numero_nota
@@ -129,7 +129,7 @@ export default function AlmacenNotasVentaScreen({ navigation }) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Cargando notas de venta...</Text>
+        <Text style={styles.loadingText}>Cargando notas de entrega...</Text>
       </View>
     );
   }
@@ -147,9 +147,9 @@ export default function AlmacenNotasVentaScreen({ navigation }) {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Icon name="receipt" size={80} color="#ccc" />
-            <Text style={styles.emptyText}>No hay notas de venta</Text>
+            <Text style={styles.emptyText}>No hay notas de entrega</Text>
             <Text style={styles.emptySubtext}>
-              Las notas de venta aparecerán aquí cuando se generen automáticamente
+              Las notas de entrega aparecerán aquí cuando se generen automáticamente
             </Text>
           </View>
         }

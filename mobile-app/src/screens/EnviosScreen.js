@@ -52,30 +52,20 @@ export default function EnviosScreen({ navigation }) {
         return;
       }
       
-      console.log('[EnviosScreen] UserInfo completo:', JSON.stringify(userInfo, null, 2));
       console.log(`[EnviosScreen] Cargando envíos para ${esTransportista ? 'transportista' : 'almacén'} ID: ${userInfo.id}`);
       let data = [];
       
+      // Cargar envíos (el timeout ya está configurado en api.js: 3 segundos)
       if (esTransportista) {
         // Cargar envíos asignados al transportista
         console.log(`[EnviosScreen] Llamando getByTransportista(${userInfo.id})`);
-        try {
-          const response = await envioService.getByTransportista(userInfo.id);
-          console.log('[EnviosScreen] Respuesta recibida:', typeof response);
-          data = Array.isArray(response) ? response : (response?.data || response || []);
-        } catch (transportistaError) {
-          console.error('[EnviosScreen] Error específico de transportista:', transportistaError);
-          data = [];
-        }
+        data = await envioService.getByTransportista(userInfo.id);
+        console.log('[EnviosScreen] Respuesta recibida:', typeof data);
+        data = Array.isArray(data) ? data : (data?.data || data || []);
       } else {
         // Cargar envíos del almacén
         console.log(`[EnviosScreen] Llamando getAll(${userInfo.id})`);
-        try {
-          data = await envioService.getAll(userInfo.id);
-        } catch (almacenError) {
-          console.error('[EnviosScreen] Error específico de almacén:', almacenError);
-          data = [];
-        }
+        data = await envioService.getAll(userInfo.id);
       }
       
       console.log(`[EnviosScreen] Total envíos recibidos: ${Array.isArray(data) ? data.length : 0}`);
@@ -352,6 +342,10 @@ export default function EnviosScreen({ navigation }) {
     // Detectar si es una ruta multi-entrega (puede venir como es_multi_entrega o es_ruta_multiple)
     const esRutaMultiple = item.es_multi_entrega === true || item.es_ruta_multiple === true || item.tipo === 'RUTA_MULTIPLE' || item.codigo?.startsWith('RUTA-');
     const totalEnviosRuta = item.total_envios_ruta || item.total_envios || 0;
+    
+    // Detectar si es asignación múltiple (no es ruta multi-entrega, pero fue asignado junto con otros envíos)
+    const esAsignacionMultiple = !esRutaMultiple && (item.es_asignacion_multiple === true || item.tipo_asignacion === 'multiple');
+    const totalEnviosAsignacion = item.total_envios_asignacion || 0;
 
     // Debug para ver qué está llegando
     if (esRutaMultiple) {
@@ -368,7 +362,11 @@ export default function EnviosScreen({ navigation }) {
     }
 
     return (
-      <Card style={[styles.card, esRutaMultiple && styles.cardMultiEntrega]} elevation={4}>
+      <Card style={[
+        styles.card, 
+        esRutaMultiple && styles.cardMultiEntrega,
+        esAsignacionMultiple && styles.cardAsignacionMultiple
+      ]} elevation={4}>
         <Card.Content>
           {/* Badge de Multi-Entrega */}
           {esRutaMultiple && (
@@ -376,6 +374,16 @@ export default function EnviosScreen({ navigation }) {
               <Icon name="routes" size={18} color="#FFF" />
               <Text style={styles.multiEntregaText}>
                 🛣️ RUTA MULTI-ENTREGA ({totalEnviosRuta} envíos)
+              </Text>
+            </View>
+          )}
+          
+          {/* Badge de Asignación Múltiple */}
+          {esAsignacionMultiple && (
+            <View style={styles.asignacionMultipleBadge}>
+              <Icon name="truck-delivery" size={18} color="#FFF" />
+              <Text style={styles.asignacionMultipleText}>
+                📦 ASIGNACIÓN MÚLTIPLE ({totalEnviosAsignacion} envíos)
               </Text>
             </View>
           )}
@@ -392,28 +400,61 @@ export default function EnviosScreen({ navigation }) {
           {/* Header */}
           <View style={styles.cardHeader}>
             <View style={styles.codigoContainer}>
-              <Text variant="titleLarge" style={[styles.codigo, esRutaMultiple && styles.codigoMulti]}>
+              <Text variant="titleLarge" style={[
+                styles.codigo, 
+                esRutaMultiple && styles.codigoMulti,
+                esAsignacionMultiple && styles.codigoAsignacionMultiple
+              ]}>
                 {item.codigo || 'Sin código'}
               </Text>
               <View style={styles.estadoRow}>
                 <Icon 
-                  name={esRutaMultiple ? 'truck-delivery' : getEstadoIcon(item.estado || 'pendiente')} 
+                  name={
+                    esRutaMultiple ? 'truck-delivery' : 
+                    esAsignacionMultiple ? 'truck-delivery' : 
+                    getEstadoIcon(item.estado || 'pendiente')
+                  } 
                   size={18} 
-                  color={esRutaMultiple ? '#7B1FA2' : getEstadoColor(item.estado || 'pendiente')} 
+                  color={
+                    esRutaMultiple ? '#7B1FA2' : 
+                    esAsignacionMultiple ? '#FF9800' : 
+                    getEstadoColor(item.estado || 'pendiente')
+                  } 
                 />
-                <Text style={[styles.estadoText, { color: esRutaMultiple ? '#7B1FA2' : getEstadoColor(item.estado || 'pendiente') }]}>
+                <Text style={[
+                  styles.estadoText, 
+                  { 
+                    color: esRutaMultiple ? '#7B1FA2' : 
+                           esAsignacionMultiple ? '#FF9800' : 
+                           getEstadoColor(item.estado || 'pendiente') 
+                  }
+                ]}>
                   {esRutaMultiple 
                     ? (item.estado === 'programada' ? 'PENDIENTE ACEPTAR' : item.estado?.toUpperCase())
+                    : esAsignacionMultiple
+                    ? 'ASIGNACIÓN MÚLTIPLE'
                     : getEstadoTexto(item.estado || 'pendiente').toUpperCase()}
                 </Text>
               </View>
             </View>
             
-            <View style={[styles.qrIconContainer, esRutaMultiple && styles.qrIconMulti]}>
+            <View style={[
+              styles.qrIconContainer, 
+              esRutaMultiple && styles.qrIconMulti,
+              esAsignacionMultiple && styles.qrIconAsignacionMultiple
+            ]}>
               <Icon 
-                name={esRutaMultiple ? "map-marker-multiple" : "file-document-outline"} 
+                name={
+                  esRutaMultiple ? "map-marker-multiple" : 
+                  esAsignacionMultiple ? "truck-delivery" : 
+                  "file-document-outline"
+                } 
                 size={28} 
-                color={esRutaMultiple ? "#7B1FA2" : "#4CAF50"} 
+                color={
+                  esRutaMultiple ? "#7B1FA2" : 
+                  esAsignacionMultiple ? "#FF9800" : 
+                  "#4CAF50"
+                } 
                 onPress={() => esRutaMultiple 
                   ? navigation.navigate('RutaMultiDetalle', { rutaId: itemId })
                   : verDetalles(itemId)}
@@ -455,6 +496,16 @@ export default function EnviosScreen({ navigation }) {
             )}
           </>
         )}
+        
+        {/* Info adicional para asignación múltiple */}
+        {esAsignacionMultiple && (
+          <View style={styles.infoRow}>
+            <Icon name="truck-multiple" size={20} color="#FF9800" />
+            <Text style={[styles.infoText, {color: '#FF9800', fontWeight: '600'}]}>
+              Este envío fue asignado junto con {totalEnviosAsignacion - 1} otro(s) envío(s) al mismo vehículo
+            </Text>
+          </View>
+        )}
 
         <View style={styles.divider} />
 
@@ -471,9 +522,21 @@ export default function EnviosScreen({ navigation }) {
               <Text style={styles.statText}>{parseFloat(item.total_peso || 0).toFixed(2)}kg</Text>
             </View>
             
-            <View style={[styles.precioContainer, esRutaMultiple && styles.precioMulti]}>
-              <Text style={[styles.precioLabel, esRutaMultiple && {color: '#7B1FA2'}]}>Total:</Text>
-              <Text style={[styles.precioValue, esRutaMultiple && {color: '#7B1FA2'}]}>
+            <View style={[
+              styles.precioContainer, 
+              esRutaMultiple && styles.precioMulti,
+              esAsignacionMultiple && styles.precioAsignacionMultiple
+            ]}>
+              <Text style={[
+                styles.precioLabel, 
+                esRutaMultiple && {color: '#7B1FA2'},
+                esAsignacionMultiple && {color: '#FF9800'}
+              ]}>Total:</Text>
+              <Text style={[
+                styles.precioValue, 
+                esRutaMultiple && {color: '#7B1FA2'},
+                esAsignacionMultiple && {color: '#FF9800'}
+              ]}>
                 Bs {parseFloat(item.total_precio || 0).toFixed(2)}
               </Text>
             </View>
@@ -747,12 +810,13 @@ export default function EnviosScreen({ navigation }) {
         renderItem={renderEnvio}
         keyExtractor={(item, index) => {
           try {
-            // Para rutas multi-entrega el id puede venir como ruta_id
-            const itemId = item?.id || item?.ruta_id;
-            return itemId?.toString() || `envio-${index}`;
+            // Generar key único combinando tipo, id e índice
+            const tipo = item?.ruta_id ? 'ruta' : 'envio';
+            const itemId = item?.id || item?.ruta_id || index;
+            return `${tipo}-${itemId}-${index}`;
           } catch (e) {
             console.error('[EnviosScreen] Error en keyExtractor:', e);
-            return `fallback-${index}`;
+            return `fallback-${Date.now()}-${index}`;
           }
         }}
         contentContainerStyle={styles.listContent}
@@ -810,6 +874,11 @@ const styles = StyleSheet.create({
     borderColor: '#7B1FA2',
     backgroundColor: '#FDFAFF',
   },
+  cardAsignacionMultiple: {
+    borderWidth: 2,
+    borderColor: '#FF9800',
+    backgroundColor: '#FFF8E1',
+  },
   multiEntregaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -821,6 +890,22 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   multiEntregaText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 12,
+    marginLeft: 6,
+  },
+  asignacionMultipleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  asignacionMultipleText: {
     color: '#FFF',
     fontWeight: 'bold',
     fontSize: 12,
@@ -843,6 +928,9 @@ const styles = StyleSheet.create({
   codigoMulti: {
     color: '#7B1FA2',
   },
+  codigoAsignacionMultiple: {
+    color: '#FF9800',
+  },
   estadoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -859,6 +947,9 @@ const styles = StyleSheet.create({
   },
   qrIconMulti: {
     backgroundColor: '#F3E5F5',
+  },
+  qrIconAsignacionMultiple: {
+    backgroundColor: '#FFF3E0',
   },
   divider: {
     height: 1,
@@ -907,6 +998,9 @@ const styles = StyleSheet.create({
   },
   precioMulti: {
     backgroundColor: '#F3E5F5',
+  },
+  precioAsignacionMultiple: {
+    backgroundColor: '#FFF3E0',
   },
   precioLabel: {
     fontSize: 13,

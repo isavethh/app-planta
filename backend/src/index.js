@@ -140,9 +140,9 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
   console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
-  console.log(`📱 Accesible desde red local en: http://192.168.0.129:${PORT}/api`);
+  console.log(`📱 Accesible desde red local en: http://10.26.13.220:${PORT}/api`);
   console.log(`   (Asegúrate de que tu celular esté en la misma red WiFi)`);
-  console.log(`\n✅ App móvil configurada para: http://192.168.0.129:${PORT}/api`);
+  console.log(`\n✅ App móvil configurada para: http://10.26.13.220:${PORT}/api`);
 });
 
 module.exports = { app, io, server };

@@ -57,12 +57,14 @@ async function crearTablasRutas() {
     console.log('✅ Tabla creada: ruta_paradas');
     
     // 3. Tabla checklists
+    // NOTA: Solo usa ruta_parada_id 
+    // - ruta_entrega_id se obtiene a través de ruta_paradas.ruta_entrega_id
+    // - envio_id se obtiene a través de ruta_paradas.envio_id
     await pool.query(`
       CREATE TABLE IF NOT EXISTS checklists (
         id SERIAL PRIMARY KEY,
         ruta_parada_id INTEGER REFERENCES ruta_paradas(id) ON DELETE CASCADE,
-        ruta_entrega_id INTEGER REFERENCES rutas_entrega(id) ON DELETE CASCADE,
-        envio_id INTEGER,
+        envio_id INTEGER, -- Para envíos normales (sin ruta múltiple) - referencia a tabla envios en Laravel
         tipo VARCHAR(50) NOT NULL,
         datos JSONB DEFAULT '{}',
         firma_base64 TEXT,
@@ -76,11 +78,13 @@ async function crearTablasRutas() {
     console.log('✅ Tabla creada: checklists');
     
     // 4. Tabla evidencias_entrega
+    // NOTA: Solo usa ruta_parada_id (checklist_id se obtiene a través de ruta_parada_id -> checklists)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS evidencias_entrega (
         id SERIAL PRIMARY KEY,
         ruta_parada_id INTEGER REFERENCES ruta_paradas(id) ON DELETE CASCADE,
-        checklist_id INTEGER REFERENCES checklists(id) ON DELETE CASCADE,
+        envio_id INTEGER, -- Para envíos normales (sin ruta múltiple) - referencia a tabla envios en Laravel
+        item_id VARCHAR(100), -- ID del item del checklist que requiere evidencia
         tipo VARCHAR(50) NOT NULL,
         nombre VARCHAR(200),
         url TEXT,

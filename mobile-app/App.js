@@ -40,6 +40,8 @@ import RutaMultiEntregaScreen from './src/screens/RutaMultiEntregaScreen';
 import ChecklistSalidaScreen from './src/screens/ChecklistSalidaScreen';
 import ChecklistEntregaScreen from './src/screens/ChecklistEntregaScreen';
 import ResumenRutaScreen from './src/screens/ResumenRutaScreen';
+// Pantalla de asignación múltiple
+// import AsignacionMultipleScreen from './src/screens/AsignacionMultipleScreen'; // Archivo no existe aún
 
 // Contexto de autenticación
 import { AuthContext } from './src/context/AuthContext';

@@ -107,6 +107,20 @@ async function crearRuta(req, res) {
             `, [ruta.id, envioId]);
         }
 
+        // Crear parada de salida (orden 0) para checklist de salida
+        const planta = await client.query(`
+            SELECT latitud, longitud FROM almacenes WHERE es_planta = true LIMIT 1
+        `);
+        const plantaData = planta.rows[0] || { latitud: null, longitud: null };
+        
+        await client.query(`
+            INSERT INTO ruta_paradas (
+                ruta_entrega_id, envio_id, orden, estado,
+                destino_lat, destino_lng, observaciones
+            )
+            VALUES ($1, NULL, 0, 'completada', $2, $3, 'Parada de salida - Planta')
+        `, [ruta.id, plantaData.latitud, plantaData.longitud]);
+
         // Actualizar peso total
         await client.query(`
             UPDATE rutas_entrega SET total_peso = $1 WHERE id = $2
@@ -172,9 +186,11 @@ async function obtenerRutaCompleta(rutaId) {
 
     ruta.paradas = paradasResult.rows;
 
-    // Obtener checklists
+    // Obtener checklists (a través de ruta_paradas)
     const checklistsResult = await pool.query(`
-        SELECT * FROM checklists WHERE ruta_entrega_id = $1
+        SELECT c.* FROM checklists c
+        JOIN ruta_paradas p ON c.ruta_parada_id = p.id
+        WHERE p.ruta_entrega_id = $1
     `, [rutaId]);
     ruta.checklists = checklistsResult.rows;
 
@@ -341,9 +357,8 @@ async function guardarChecklist(req, res) {
         await client.query('BEGIN');
         
         const { 
-            ruta_entrega_id, 
             ruta_parada_id, 
-            envio_id, 
+            envio_id,  // NUEVO: Para envíos normales (sin ruta múltiple)
             tipo, 
             datos, 
             firma_base64 
@@ -356,17 +371,25 @@ async function guardarChecklist(req, res) {
             });
         }
 
+        if (!ruta_parada_id && !envio_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Se requiere ruta_parada_id o envio_id'
+            });
+        }
+
         // Insertar checklist
+        // Soporta tanto rutas múltiples (ruta_parada_id) como envíos normales (envio_id)
         const result = await client.query(`
             INSERT INTO checklists (
-                ruta_parada_id, ruta_entrega_id, envio_id, 
+                ruta_parada_id, 
+                envio_id,
                 tipo, datos, firma_base64, completado
             )
-            VALUES ($1, $2, $3, $4, $5, $6, true)
+            VALUES ($1, $2, $3, $4, $5, true)
             RETURNING *
         `, [
             ruta_parada_id || null,
-            ruta_entrega_id || null,
             envio_id || null,
             tipo,
             JSON.stringify(datos),
@@ -375,19 +398,37 @@ async function guardarChecklist(req, res) {
 
         const checklist = result.rows[0];
 
-        // Si es checklist de salida, actualizar estado de la ruta
-        if (tipo === 'salida' && ruta_entrega_id) {
-            await client.query(`
-                UPDATE rutas_entrega 
-                SET estado = 'en_transito', hora_salida = NOW()
-                WHERE id = $1
-            `, [ruta_entrega_id]);
+        // Si es checklist de salida, actualizar estado
+        if (tipo === 'salida') {
+            // Si es ruta múltiple
+            if (ruta_parada_id) {
+                const paradaResult = await client.query(`
+                    SELECT ruta_entrega_id FROM ruta_paradas WHERE id = $1
+                `, [ruta_parada_id]);
+                
+                if (paradaResult.rows.length > 0) {
+                    const ruta_entrega_id = paradaResult.rows[0].ruta_entrega_id;
+                    await client.query(`
+                        UPDATE rutas_entrega 
+                        SET estado = 'en_transito', hora_salida = NOW()
+                        WHERE id = $1
+                    `, [ruta_entrega_id]);
 
-            // Actualizar estado de todos los envíos de la ruta
-            await client.query(`
-                UPDATE envios SET estado = 'en_transito', fecha_inicio_transito = NOW()
-                WHERE ruta_entrega_id = $1
-            `, [ruta_entrega_id]);
+                    // Actualizar estado de todos los envíos de la ruta
+                    await client.query(`
+                        UPDATE envios SET estado = 'en_transito', fecha_inicio_transito = NOW()
+                        WHERE ruta_entrega_id = $1
+                    `, [ruta_entrega_id]);
+                }
+            }
+            // Si es envío normal (sin ruta múltiple)
+            else if (envio_id) {
+                await client.query(`
+                    UPDATE envios 
+                    SET estado = 'en_transito', fecha_inicio_transito = NOW()
+                    WHERE id = $1
+                `, [envio_id]);
+            }
         }
 
         // Si es checklist de entrega, actualizar estado de la parada
@@ -446,10 +487,10 @@ async function guardarChecklist(req, res) {
     }
 }
 
-// Obtener checklist por ruta o parada
+// Obtener checklist por ruta, parada o envío
 async function obtenerChecklist(req, res) {
     try {
-        const { tipo, ruta_id, parada_id } = req.query;
+        const { tipo, ruta_id, parada_id, envio_id } = req.query;
         
         let query = 'SELECT * FROM checklists WHERE 1=1';
         const params = [];
@@ -459,12 +500,18 @@ async function obtenerChecklist(req, res) {
             query += ` AND tipo = $${params.length}`;
         }
         if (ruta_id) {
+            // Buscar checklists a través de ruta_paradas
             params.push(ruta_id);
-            query += ` AND ruta_entrega_id = $${params.length}`;
+            query += ` AND ruta_parada_id IN (SELECT id FROM ruta_paradas WHERE ruta_entrega_id = $${params.length})`;
         }
         if (parada_id) {
             params.push(parada_id);
             query += ` AND ruta_parada_id = $${params.length}`;
+        }
+        if (envio_id) {
+            // NUEVO: Buscar checklist por envio_id directamente (envíos normales)
+            params.push(envio_id);
+            query += ` AND envio_id = $${params.length}`;
         }
 
         const result = await pool.query(query, params);
@@ -482,12 +529,64 @@ async function obtenerChecklist(req, res) {
     }
 }
 
+// Obtener firma de un checklist específico
+async function obtenerFirmaChecklist(req, res) {
+    try {
+        const { envio_id, ruta_parada_id, checklist_id } = req.query;
+        
+        let query = 'SELECT id, firma_base64, created_at FROM checklists WHERE 1=1';
+        const params = [];
+
+        if (checklist_id) {
+            params.push(checklist_id);
+            query += ` AND id = $${params.length}`;
+        } else if (envio_id) {
+            params.push(envio_id);
+            query += ` AND envio_id = $${params.length} AND tipo = 'salida'`;
+        } else if (ruta_parada_id) {
+            params.push(ruta_parada_id);
+            query += ` AND ruta_parada_id = $${params.length} AND tipo = 'salida'`;
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Se requiere checklist_id, envio_id o ruta_parada_id'
+            });
+        }
+
+        query += ' ORDER BY created_at DESC LIMIT 1';
+
+        const result = await pool.query(query, params);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Firma no encontrada'
+            });
+        }
+
+        res.json({
+            success: true,
+            firma: {
+                checklist_id: result.rows[0].id,
+                firma_base64: result.rows[0].firma_base64,
+                fecha: result.rows[0].created_at
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener firma',
+            error: error.message
+        });
+    }
+}
+
 // ==================== EVIDENCIAS ====================
 
 // Subir evidencia (foto)
 async function subirEvidencia(req, res) {
     try {
-        const { ruta_parada_id, checklist_id, tipo, nombre } = req.body;
+        const { ruta_parada_id, envio_id, tipo, nombre } = req.body;
 
         if (!req.file) {
             return res.status(400).json({
@@ -496,13 +595,21 @@ async function subirEvidencia(req, res) {
             });
         }
 
+        if (!ruta_parada_id && !envio_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Se requiere ruta_parada_id o envio_id'
+            });
+        }
+
         const url = `/uploads/evidencias/${req.file.filename}`;
 
+        // Soporta tanto rutas múltiples (ruta_parada_id) como envíos normales (envio_id)
         const result = await pool.query(`
-            INSERT INTO evidencias_entrega (ruta_parada_id, checklist_id, tipo, nombre, url)
+            INSERT INTO evidencias_entrega (ruta_parada_id, envio_id, tipo, nombre, url)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-        `, [ruta_parada_id || null, checklist_id || null, tipo || 'foto', nombre || 'Evidencia', url]);
+        `, [ruta_parada_id || null, envio_id || null, tipo || 'foto', nombre || 'Evidencia', url]);
 
         res.json({
             success: true,
@@ -522,7 +629,7 @@ async function subirEvidencia(req, res) {
 // Guardar evidencia en base64
 async function guardarEvidenciaBase64(req, res) {
     try {
-        const { ruta_parada_id, checklist_id, tipo, nombre, base64 } = req.body;
+        const { ruta_parada_id, envio_id, tipo, nombre, base64, item_id } = req.body;
 
         if (!base64) {
             return res.status(400).json({
@@ -531,11 +638,26 @@ async function guardarEvidenciaBase64(req, res) {
             });
         }
 
+        if (!ruta_parada_id && !envio_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Se requiere ruta_parada_id o envio_id'
+            });
+        }
+
+        // Soporta tanto rutas múltiples (ruta_parada_id) como envíos normales (envio_id)
         const result = await pool.query(`
-            INSERT INTO evidencias_entrega (ruta_parada_id, checklist_id, tipo, nombre, base64)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO evidencias_entrega (ruta_parada_id, envio_id, tipo, nombre, base64, item_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
-        `, [ruta_parada_id || null, checklist_id || null, tipo || 'foto', nombre || 'Evidencia', base64]);
+        `, [
+            ruta_parada_id || null, 
+            envio_id || null, 
+            tipo || 'foto', 
+            nombre || 'Evidencia', 
+            base64,
+            item_id || null
+        ]);
 
         res.json({
             success: true,
@@ -553,9 +675,10 @@ async function guardarEvidenciaBase64(req, res) {
 }
 
 // Obtener evidencias
+// Obtener evidencias por parada, envío o checklist
 async function obtenerEvidencias(req, res) {
     try {
-        const { parada_id, checklist_id } = req.query;
+        const { parada_id, checklist_id, envio_id } = req.query;
         
         let query = 'SELECT * FROM evidencias_entrega WHERE 1=1';
         const params = [];
@@ -564,9 +687,18 @@ async function obtenerEvidencias(req, res) {
             params.push(parada_id);
             query += ` AND ruta_parada_id = $${params.length}`;
         }
+        // NUEVO: Buscar evidencias por envio_id directamente (envíos normales)
+        if (envio_id) {
+            params.push(envio_id);
+            query += ` AND envio_id = $${params.length}`;
+        }
+        // Si se proporciona checklist_id, filtrar a través de ruta_parada_id o envio_id
         if (checklist_id) {
             params.push(checklist_id);
-            query += ` AND checklist_id = $${params.length}`;
+            query += ` AND (
+                ruta_parada_id IN (SELECT ruta_parada_id FROM checklists WHERE id = $${params.length})
+                OR envio_id IN (SELECT envio_id FROM checklists WHERE id = $${params.length})
+            )`;
         }
 
         query += ' ORDER BY created_at DESC';
@@ -676,16 +808,15 @@ async function completarEntrega(req, res) {
         `, [parada.envio_id]);
 
         // Crear checklist de entrega
+        // NOTA: No usamos ruta_entrega_id ni envio_id (se obtienen a través de ruta_parada_id)
         await client.query(`
             INSERT INTO checklists (
-                ruta_parada_id, ruta_entrega_id, envio_id, 
+                ruta_parada_id, 
                 tipo, datos, firma_base64, completado
             )
-            VALUES ($1, $2, $3, 'entrega', $4, $5, true)
+            VALUES ($1, 'entrega', $2, $3, true)
         `, [
             parada_id,
-            parada.ruta_entrega_id,
-            parada.envio_id,
             JSON.stringify({
                 nombre_receptor,
                 cargo_receptor,
@@ -811,9 +942,11 @@ async function obtenerResumenRuta(req, res) {
             ORDER BY p.orden
         `, [id]);
 
-        // Checklists
+        // Checklists (a través de ruta_paradas)
         const checklistsResult = await pool.query(`
-            SELECT * FROM checklists WHERE ruta_entrega_id = $1
+            SELECT c.* FROM checklists c
+            JOIN ruta_paradas p ON c.ruta_parada_id = p.id
+            WHERE p.ruta_entrega_id = $1
         `, [id]);
 
         // Evidencias
@@ -936,13 +1069,21 @@ async function iniciarRuta(req, res) {
             });
         }
 
-        // Guardar checklist de salida
-        await client.query(`
-            INSERT INTO checklists (
-                ruta_entrega_id, tipo, datos, firma_base64, completado
-            )
-            VALUES ($1, 'salida', $2, $3, true)
-        `, [id, JSON.stringify(checklist_datos), firma_base64]);
+        // Guardar checklist de salida (usar parada de salida orden 0)
+        const paradaSalida = await client.query(`
+            SELECT id FROM ruta_paradas 
+            WHERE ruta_entrega_id = $1 AND orden = 0
+            LIMIT 1
+        `, [id]);
+        
+        if (paradaSalida.rows.length > 0) {
+            await client.query(`
+                INSERT INTO checklists (
+                    ruta_parada_id, tipo, datos, firma_base64, completado
+                )
+                VALUES ($1, 'salida', $2, $3, true)
+            `, [paradaSalida.rows[0].id, JSON.stringify(checklist_datos), firma_base64]);
+        }
 
         // Actualizar ruta
         await client.query(`
@@ -999,6 +1140,7 @@ module.exports = {
     obtenerTemplateChecklist,
     guardarChecklist,
     obtenerChecklist,
+    obtenerFirmaChecklist,
     
     // Evidencias
     subirEvidencia,

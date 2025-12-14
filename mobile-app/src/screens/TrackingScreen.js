@@ -1,13 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, ScrollView, Dimensions, StatusBar, Platform } from 'react-native';
-import { Card, Text, Button, ActivityIndicator, Appbar, Chip, Surface } from 'react-native-paper';
+import { View, StyleSheet, Alert, ScrollView, Dimensions, StatusBar, Platform, TouchableOpacity } from 'react-native';
+import { Card, Text, Button, ActivityIndicator, Appbar, Chip, Surface, Checkbox, Modal, Portal, TextInput } from 'react-native-paper';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import { envioService } from '../services/api';
+import { envioService, rutasMultiService } from '../services/api';
 import socketService from '../services/socket';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import * as ImagePicker from 'expo-image-picker';
+import SignatureCanvas from 'react-native-signature-canvas';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyAIwhMeAvxLiKqRu3KMtwN1iT1jJBtioG0';
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
+
+// Template de checklist de salida
+const CHECKLIST_ITEMS = [
+  { id: 'documentos_carga', label: 'Documentos de carga completos', categoria: 'documentos' },
+  { id: 'guias_remision', label: 'Guías de remisión disponibles', categoria: 'documentos' },
+  { id: 'carga_verificada', label: 'Carga verificada y contada', categoria: 'carga' },
+  { id: 'carga_asegurada', label: 'Carga asegurada correctamente', categoria: 'carga' },
+  { id: 'embalaje_correcto', label: 'Embalaje en buen estado', categoria: 'carga' },
+  { id: 'combustible_ok', label: 'Combustible suficiente', categoria: 'vehiculo' },
+  { id: 'llantas_ok', label: 'Llantas en buen estado', categoria: 'vehiculo' },
+  { id: 'luces_ok', label: 'Luces funcionando', categoria: 'vehiculo' },
+  { id: 'frenos_ok', label: 'Frenos funcionando', categoria: 'vehiculo' },
+  { id: 'documentos_vehiculo', label: 'Documentos del vehículo', categoria: 'vehiculo' },
+  { id: 'licencia_conductor', label: 'Licencia de conducir vigente', categoria: 'conductor' },
+  { id: 'epp_completo', label: 'EPP completo (si aplica)', categoria: 'conductor' },
+];
 
 export default function TrackingScreen({ route, navigation }) {
   const { envioId } = route.params;
@@ -19,9 +37,52 @@ export default function TrackingScreen({ route, navigation }) {
   const [distanciaTotal, setDistanciaTotal] = useState('');
   const [duracionTotal, setDuracionTotal] = useState('');
   const [socketConectado, setSocketConectado] = useState(false);
+  const [checklistModalVisible, setChecklistModalVisible] = useState(false);
+  const [checklistData, setChecklistData] = useState({});
+  const [checklistCompletado, setChecklistCompletado] = useState(false);
+  const [checklistFotos, setChecklistFotos] = useState({});
+  const [observaciones, setObservaciones] = useState('');
+  const [guardandoChecklist, setGuardandoChecklist] = useState(false);
+  const [firma, setFirma] = useState(null);
+  const [mostrarFirma, setMostrarFirma] = useState(false);
+  const signatureRef = useRef(null);
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
   const simulandoRef = useRef(false); // Ref para evitar stale closure
+
+  // Inicializar checklist
+  useEffect(() => {
+    const initialData = {};
+    CHECKLIST_ITEMS.forEach(item => {
+      initialData[item.id] = false;
+    });
+    setChecklistData(initialData);
+  }, []);
+
+  // Verificar si checklist está completo
+  useEffect(() => {
+    const itemsMarcados = Object.values(checklistData).filter(v => v === true).length;
+    setChecklistCompletado(itemsMarcados === CHECKLIST_ITEMS.length);
+  }, [checklistData]);
+
+  // Manejar firma
+  const handleOK = (signature) => {
+    setFirma(signature);
+    setMostrarFirma(false);
+    console.log('[TrackingScreen] Firma capturada');
+  };
+
+  const handleClear = () => {
+    signatureRef.current?.clearSignature();
+  };
+
+  const handleConfirm = () => {
+    signatureRef.current?.readSignature();
+  };
+
+  const handleEmpty = () => {
+    Alert.alert('Firma requerida', 'Por favor, firma el checklist antes de continuar');
+  };
 
   useEffect(() => {
     cargarDatos();
@@ -102,23 +163,34 @@ export default function TrackingScreen({ route, navigation }) {
         throw new Error('ID de envío no válido');
       }
       
-      const data = await envioService.getById(envioId);
+      const response = await envioService.getById(envioId);
+      
+      // La API devuelve {success: true, data: {...}, estado: ..., estado_nombre: ...}
+      const data = response?.data || response;
       
       // Validar datos recibidos
       if (!data || !data.id) {
         throw new Error('Datos del envío inválidos');
       }
       
-      // Normalizar estado_nombre
+      // Normalizar estado_nombre - usar el que viene de la API o el del objeto data
+      if (!data.estado_nombre && response?.estado_nombre) {
+        data.estado_nombre = response.estado_nombre;
+      }
       if (data.estado && !data.estado_nombre) {
         data.estado_nombre = data.estado;
       }
       
-      // Asegurar que las coordenadas sean números válidos
-      data.origen_latitud = parseFloat(data.origen_latitud) || -17.7833;
-      data.origen_longitud = parseFloat(data.origen_longitud) || -63.1821;
-      data.destino_latitud = parseFloat(data.destino_latitud) || -17.7892;
-      data.destino_longitud = parseFloat(data.destino_longitud) || -63.1751;
+      // Asegurar que estado esté presente
+      if (!data.estado && response?.estado) {
+        data.estado = response.estado;
+      }
+      
+      // Asegurar que las coordenadas sean números válidos - usar múltiples campos posibles
+      data.origen_latitud = parseFloat(data.origen_latitud || data.origen_lat || data.almacenDestino?.latitud) || -17.7833;
+      data.origen_longitud = parseFloat(data.origen_longitud || data.origen_lng || data.almacenDestino?.longitud) || -63.1821;
+      data.destino_latitud = parseFloat(data.destino_latitud || data.latitud || data.almacenDestino?.latitud) || -17.7892;
+      data.destino_longitud = parseFloat(data.destino_longitud || data.longitud || data.almacenDestino?.longitud) || -63.1751;
       
       console.log('[TrackingScreen] Envío cargado:', {
         id: data.id,
@@ -140,27 +212,189 @@ export default function TrackingScreen({ route, navigation }) {
     }
   };
 
+  // Interpolar puntos adicionales entre dos puntos para suavizar la ruta
+  const interpolarPuntos = (p1, p2, numPuntos = 5) => {
+    const puntos = [];
+    for (let i = 0; i <= numPuntos; i++) {
+      const t = i / numPuntos;
+      puntos.push({
+        latitude: p1.latitude + (p2.latitude - p1.latitude) * t,
+        longitude: p1.longitude + (p2.longitude - p1.longitude) * t,
+      });
+    }
+    return puntos;
+  };
+
+  // Suavizar ruta agregando puntos intermedios
+  const suavizarRuta = (puntos, densidad = 10) => {
+    if (puntos.length < 2) return puntos;
+    
+    const puntosSuavizados = [puntos[0]]; // Primer punto
+    
+    for (let i = 0; i < puntos.length - 1; i++) {
+      const p1 = puntos[i];
+      const p2 = puntos[i + 1];
+      
+      // Calcular distancia entre puntos (en grados)
+      const distancia = Math.sqrt(
+        Math.pow(p2.latitude - p1.latitude, 2) + 
+        Math.pow(p2.longitude - p1.longitude, 2)
+      );
+      
+      // Si la distancia es grande, agregar más puntos intermedios
+      // Aproximadamente 1 grado = 111 km, así que multiplicamos por 111000 para obtener metros
+      const distanciaMetros = distancia * 111000;
+      // Agregar más puntos: 1 punto cada 20 metros (más denso)
+      const numPuntosIntermedios = Math.max(3, Math.min(densidad, Math.floor(distanciaMetros / 20)));
+      
+      const puntosIntermedios = interpolarPuntos(p1, p2, numPuntosIntermedios);
+      // Agregar puntos intermedios (sin el primero que ya está)
+      puntosSuavizados.push(...puntosIntermedios.slice(1));
+    }
+    
+    console.log(`[TrackingScreen] 🔄 Ruta suavizada: ${puntos.length} puntos originales -> ${puntosSuavizados.length} puntos suavizados`);
+    return puntosSuavizados;
+  };
+
   const obtenerRutaReal = async (origen, destino) => {
     try {
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origen.latitude},${origen.longitude}&destination=${destino.latitude},${destino.longitude}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
+      // PRIMERO: Intentar con Google Directions API (más preciso y suave)
+      console.log('[TrackingScreen] Intentando obtener ruta desde Google Directions API...');
       
-      console.log('[TrackingScreen] Obteniendo ruta real desde Google Directions API...');
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.routes.length > 0) {
-        const route = data.routes[0];
-        const points = decodePolyline(route.overview_polyline.points);
+      try {
+        const googleUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${origen.latitude},${origen.longitude}&destination=${destino.latitude},${destino.longitude}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
+        const googleResponse = await fetch(googleUrl);
+        const googleData = await googleResponse.json();
         
-        // Información de la ruta
-        const leg = route.legs[0];
-        setDistanciaTotal(leg.distance.text);
-        setDuracionTotal(leg.duration.text);
-
-        console.log(`[TrackingScreen] Ruta obtenida: ${points.length} puntos, ${leg.distance.text}, ${leg.duration.text}`);
-        return points;
+        if (googleData.status === 'OK' && googleData.routes && googleData.routes.length > 0) {
+          const route = googleData.routes[0];
+          let allPoints = [];
+          
+          // Obtener puntos de todos los steps
+          if (route.legs && route.legs.length > 0) {
+            route.legs.forEach(leg => {
+              if (leg.steps && leg.steps.length > 0) {
+                leg.steps.forEach(step => {
+                  if (step.start_location) {
+                    allPoints.push({
+                      latitude: step.start_location.lat,
+                      longitude: step.start_location.lng,
+                    });
+                  }
+                  if (step.end_location) {
+                    allPoints.push({
+                      latitude: step.end_location.lat,
+                      longitude: step.end_location.lng,
+                    });
+                  }
+                });
+              }
+            });
+          }
+          
+          // Si hay overview_polyline, decodificarlo para más puntos
+          if (route.overview_polyline && route.overview_polyline.points) {
+            const decodedPoints = decodePolyline(route.overview_polyline.points);
+            if (decodedPoints && decodedPoints.length > allPoints.length) {
+              // Asegurar que los puntos decodificados tengan el formato correcto
+              const formattedPoints = decodedPoints.map(p => ({
+                latitude: typeof p.latitude === 'number' ? p.latitude : p.lat,
+                longitude: typeof p.longitude === 'number' ? p.longitude : p.lng
+              })).filter(p => p.latitude && p.longitude);
+              if (formattedPoints.length > allPoints.length) {
+                allPoints = formattedPoints;
+              }
+            }
+          }
+          
+          // Eliminar duplicados consecutivos
+          const uniquePoints = [];
+          let lastPoint = null;
+          allPoints.forEach(point => {
+            if (!lastPoint || 
+                Math.abs(point.latitude - lastPoint.latitude) > 0.0001 || 
+                Math.abs(point.longitude - lastPoint.longitude) > 0.0001) {
+              uniquePoints.push(point);
+              lastPoint = point;
+            }
+          });
+          
+          // Suavizar la ruta agregando puntos intermedios
+          const puntosSuavizados = suavizarRuta(uniquePoints, 5);
+          
+          console.log(`[TrackingScreen] ✅ Ruta obtenida de Google: ${uniquePoints.length} puntos originales, ${puntosSuavizados.length} puntos suavizados`);
+          
+          // Información estimada
+          if (route.legs && route.legs[0]) {
+            setDistanciaTotal(route.legs[0].distance.text);
+            setDuracionTotal(route.legs[0].duration.text);
+          }
+          
+          return puntosSuavizados;
+        }
+      } catch (googleError) {
+        console.warn('[TrackingScreen] Google Directions falló, intentando OSRM...', googleError.message);
+      }
+      
+      // FALLBACK: Usar OSRM (Open Source Routing Machine) - GRATIS y sin API key
+      console.log('[TrackingScreen] Obteniendo ruta desde OSRM...');
+      
+      // OSRM usa formato [lng, lat] para las coordenadas
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origen.longitude},${origen.latitude};${destino.longitude},${destino.latitude}?overview=full&geometries=geojson&steps=true&alternatives=false`;
+      
+      const response = await fetch(osrmUrl);
+      const osrmData = await response.json();
+      
+      if (osrmData.code === 'Ok' && osrmData.routes && osrmData.routes.length > 0) {
+        const osrmRoute = osrmData.routes[0];
+        const coordinates = osrmRoute.geometry.coordinates;
+        
+        if (!coordinates || coordinates.length === 0) {
+          console.error('[TrackingScreen] OSRM devolvió ruta sin coordenadas');
+          return [];
+        }
+        
+        // Convertir coordenadas GeoJSON [lng, lat] a formato {latitude, longitude}
+        const points = coordinates
+          .map(coord => {
+            if (Array.isArray(coord) && coord.length >= 2 && 
+                typeof coord[0] === 'number' && typeof coord[1] === 'number' &&
+                !isNaN(coord[0]) && !isNaN(coord[1]) &&
+                coord[0] !== 0 && coord[1] !== 0) {
+              return {
+                latitude: coord[1],
+                longitude: coord[0]
+              };
+            }
+            return null;
+          })
+          .filter(p => p !== null);
+        
+        console.log(`[TrackingScreen] ✅ Ruta obtenida de OSRM: ${points.length} puntos válidos (de ${coordinates.length} coordenadas)`);
+        
+        // SUAVIZAR la ruta agregando puntos intermedios (aumentar densidad a 10)
+        const puntosSuavizados = suavizarRuta(points, 10);
+        
+        console.log(`[TrackingScreen] ✅ Ruta suavizada: ${puntosSuavizados.length} puntos (de ${points.length} originales)`);
+        
+        // Información estimada
+        if (osrmRoute.distance && osrmRoute.duration) {
+          const distKm = (osrmRoute.distance / 1000).toFixed(1);
+          const durMin = Math.round(osrmRoute.duration / 60);
+          setDistanciaTotal(`${distKm} km`);
+          setDuracionTotal(`~${durMin} min`);
+          console.log(`[TrackingScreen] 📊 Distancia: ${distKm} km, Duración: ~${durMin} min`);
+        }
+        
+        if (puntosSuavizados.length === 0) {
+          console.error('[TrackingScreen] No se pudieron convertir coordenadas de OSRM');
+          return [];
+        }
+        
+        return puntosSuavizados;
       } else {
-        console.error('[TrackingScreen] Error en Directions API:', data.status);
+        const errorMsg = osrmData.code || osrmData.message || 'unknown';
+        console.error('[TrackingScreen] Error en OSRM:', errorMsg);
         return [];
       }
     } catch (error) {
@@ -204,7 +438,101 @@ export default function TrackingScreen({ route, navigation }) {
     return points;
   };
 
-  const handleIniciarSimulacion = async () => {
+  // Funciones para manejar checklist
+  const toggleItem = (itemId) => {
+    setChecklistData(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  };
+
+  const tomarFotoParaItem = async (itemId) => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos de cámara para tomar fotos de evidencia');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const fotoBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        setChecklistFotos(prev => ({
+          ...prev,
+          [itemId]: fotoBase64
+        }));
+
+        // Guardar evidencia en backend
+        try {
+          await rutasMultiService.guardarEvidenciaBase64({
+            envio_id: envioId,
+            item_id: itemId,
+            tipo: 'checklist_salida',
+            nombre: `Evidencia ${CHECKLIST_ITEMS.find(i => i.id === itemId)?.label || itemId}`,
+            base64: result.assets[0].base64
+          });
+        } catch (error) {
+          console.warn('[TrackingScreen] Error guardando evidencia:', error);
+        }
+      }
+    } catch (error) {
+      console.error('[TrackingScreen] Error tomando foto:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  const guardarChecklistEIniciar = async () => {
+    try {
+      // Validar que la firma esté presente
+      if (!firma) {
+        Alert.alert(
+          '⚠️ Firma Requerida',
+          'Debes firmar el checklist antes de iniciar el envío.',
+          [{ text: 'Entendido' }]
+        );
+        return;
+      }
+
+      setGuardandoChecklist(true);
+
+      // Preparar datos del checklist
+      const datos = {
+        ...checklistData,
+        observaciones,
+        verificado_por: 'Transportista',
+        fecha_hora: new Date().toISOString(),
+      };
+
+      // Guardar checklist con firma
+      console.log('[TrackingScreen] Guardando checklist con firma...');
+      await rutasMultiService.guardarChecklist(null, {
+        envio_id: envioId,
+        tipo: 'salida',
+        datos,
+        firma_base64: firma
+      });
+
+      console.log('[TrackingScreen] ✅ Checklist guardado con firma');
+      setChecklistModalVisible(false);
+      setGuardandoChecklist(false);
+
+      // Ahora iniciar la simulación
+      iniciarSimulacionReal();
+    } catch (error) {
+      console.error('[TrackingScreen] Error guardando checklist:', error);
+      Alert.alert('Error', error.message || 'No se pudo guardar el checklist');
+      setGuardandoChecklist(false);
+    }
+  };
+
+  const iniciarSimulacionReal = async () => {
     try {
       console.log('[TrackingScreen] Iniciando simulación...');
       setSimulando(true);
@@ -218,67 +546,84 @@ export default function TrackingScreen({ route, navigation }) {
         return;
       }
 
-      // PRIMERO: Llamar al backend para generar los puntos de la ruta
-      // El backend genera 16 puntos y los guarda en la BD
-      console.log('[TrackingScreen] Obteniendo puntos de ruta del backend...');
-      let puntosBackend = [];
-      try {
-        const simResponse = await envioService.simularMovimiento(envioId);
-        console.log('[TrackingScreen] ✅ Respuesta del backend:', simResponse);
+      // SIEMPRE obtener ruta real de OSRM/Google (NO usar puntos del backend que pueden ser línea recta)
+      console.log('[TrackingScreen] Obteniendo ruta real que sigue calles (OSRM/Google)...');
+      
+      const origen = {
+        latitude: parseFloat(envio.origen_latitud) || parseFloat(envio.origen_lat) || -17.7833,
+        longitude: parseFloat(envio.origen_longitud) || parseFloat(envio.origen_lng) || -63.1821,
+      };
+      const destino = {
+        latitude: parseFloat(envio.destino_latitud) || parseFloat(envio.latitud) || -17.7892,
+        longitude: parseFloat(envio.destino_longitud) || parseFloat(envio.longitud) || -63.1751,
+      };
+      
+      console.log(`[TrackingScreen] Origen: (${origen.latitude}, ${origen.longitude})`);
+      console.log(`[TrackingScreen] Destino: (${destino.latitude}, ${destino.longitude})`);
+      
+      // Obtener ruta real de OSRM/Google (sigue calles reales, NO línea recta)
+      console.log('[TrackingScreen] 🔄 Llamando a obtenerRutaReal...');
+      let puntosBackend = await obtenerRutaReal(origen, destino);
+      
+      console.log(`[TrackingScreen] 📊 Puntos obtenidos: ${puntosBackend.length}`);
+      
+      // Validar que tenemos suficientes puntos (más de 50 para una ruta real)
+      if (puntosBackend.length < 50) {
+        console.warn(`[TrackingScreen] ⚠️ Ruta tiene pocos puntos (${puntosBackend.length}), esto puede verse como línea recta`);
+        console.warn(`[TrackingScreen] 🔄 Intentando obtener más puntos...`);
         
-        if (simResponse.puntos && simResponse.puntos.length > 0) {
-          // Convertir los puntos del backend al formato de la app
-          puntosBackend = simResponse.puntos.map(p => ({
-            latitude: parseFloat(p.latitud),
-            longitude: parseFloat(p.longitud)
-          }));
-          console.log(`[TrackingScreen] ✅ ${puntosBackend.length} puntos obtenidos del backend`);
-          
-          // Guardar info de distancia/duración estimada
-          if (simResponse.origen && simResponse.destino) {
-            const distKm = calcularDistancia(
-              simResponse.origen.lat, simResponse.origen.lng,
-              simResponse.destino.lat, simResponse.destino.lng
-            );
-            setDistanciaTotal(`${distKm.toFixed(1)} km`);
-            setDuracionTotal('~1 min (simulación)');
-          }
-        }
+        // Intentar una vez más con más densidad
+        puntosBackend = await obtenerRutaReal(origen, destino);
+        console.log(`[TrackingScreen] 📊 Segunda intento: ${puntosBackend.length} puntos`);
+      }
+      
+      if (puntosBackend.length === 0) {
+        console.error('[TrackingScreen] ❌ No se pudo obtener ruta real');
+        Alert.alert('⚠️ Error', 'No se pudo obtener la ruta. Verifica tu conexión a internet.');
+        setSimulando(false);
+        simulandoRef.current = false;
+        return;
+      } else if (puntosBackend.length < 50) {
+        console.warn(`[TrackingScreen] ⚠️ Solo ${puntosBackend.length} puntos - la ruta puede verse como línea recta`);
+        console.warn(`[TrackingScreen] 💡 Esto puede deberse a que OSRM no está devolviendo suficientes puntos`);
+      } else {
+        console.log(`[TrackingScreen] ✅ Ruta real obtenida: ${puntosBackend.length} puntos (sigue calles reales)`);
+      }
+      
+      // Llamar al backend para iniciar la simulación (pero NO usar sus puntos)
+      try {
+        await envioService.simularMovimiento(envioId);
+        console.log('[TrackingScreen] ✅ Simulación iniciada en backend');
       } catch (backendError) {
-        console.warn('[TrackingScreen] ⚠️ Error obteniendo puntos del backend:', backendError.message);
+        console.warn('[TrackingScreen] ⚠️ Error iniciando simulación en backend:', backendError.message);
       }
 
-      // Si no hay puntos del backend, crear ruta interpolada
+      // Validar que tenemos suficientes puntos para una ruta real (no línea recta)
       if (puntosBackend.length === 0) {
-        console.warn('[TrackingScreen] Usando ruta interpolada como fallback');
-        const origen = {
-          latitude: parseFloat(envio.origen_latitud) || -17.7833,
-          longitude: parseFloat(envio.origen_longitud) || -63.1821,
-        };
-        const destino = {
-          latitude: parseFloat(envio.destino_latitud) || -17.7892,
-          longitude: parseFloat(envio.destino_longitud) || -63.1751,
-        };
-        puntosBackend = crearRutaInterpolada(origen, destino, 15);
-      }
-
-      if (puntosBackend.length === 0) {
-        Alert.alert('⚠️ Error', 'No se pudo crear la ruta');
+        Alert.alert('⚠️ Error', 'No se pudo obtener una ruta válida. Intenta nuevamente.');
         setSimulando(false);
         simulandoRef.current = false;
         return;
       }
-
+      
+      if (puntosBackend.length < 3) {
+        console.warn(`[TrackingScreen] ⚠️ Solo ${puntosBackend.length} puntos - puede verse como línea recta`);
+      } else {
+        console.log(`[TrackingScreen] ✅ Ruta configurada con ${puntosBackend.length} puntos - debería seguir calles reales`);
+      }
+      
       setRutaReal(puntosBackend);
       setIndicePuntoActual(0);
 
       // Ajustar mapa para mostrar toda la ruta
       if (mapRef.current && puntosBackend.length > 0) {
         try {
+          // Usar fitToCoordinates con todos los puntos para que se vea la ruta completa
           mapRef.current.fitToCoordinates(puntosBackend, {
             edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
             animated: true,
           });
+          console.log(`[TrackingScreen] ✅ Mapa ajustado para mostrar ${puntosBackend.length} puntos de ruta`);
         } catch (e) {
           console.warn('[TrackingScreen] Error ajustando mapa:', e);
         }
@@ -302,6 +647,17 @@ export default function TrackingScreen({ route, navigation }) {
       setSimulando(false);
       simulandoRef.current = false;
     }
+  };
+
+  const handleIniciarSimulacion = () => {
+    // PRIMERO: Mostrar checklist si no está completo
+    if (!checklistCompletado) {
+      setChecklistModalVisible(true);
+      return;
+    }
+
+    // Si está completo, iniciar directamente
+    iniciarSimulacionReal();
   };
 
   // Calcular distancia entre dos puntos (fórmula Haversine simplificada)
@@ -392,14 +748,24 @@ export default function TrackingScreen({ route, navigation }) {
 
         setIndicePuntoActual(indice);
         
-        // Enviar posición por WebSocket para sincronizar con Laravel
+        // Enviar posición por WebSocket para sincronizar con Laravel y la web
         const punto = puntos[indice];
         if (punto && punto.latitude && punto.longitude) {
           const progreso = indice / puntos.length;
           try {
-            socketService.enviarPosicion(envioId, { latitude: punto.latitude, longitude: punto.longitude }, progreso);
+            // Asegurar que el socket esté conectado antes de enviar
+            if (!socketService.isConnected()) {
+              socketService.connect();
+              // Esperar un poco para que se conecte
+              setTimeout(() => {
+                socketService.enviarPosicion(envioId, { latitude: punto.latitude, longitude: punto.longitude }, progreso);
+              }, 500);
+            } else {
+              socketService.enviarPosicion(envioId, { latitude: punto.latitude, longitude: punto.longitude }, progreso);
+            }
+            console.log(`[TrackingScreen] 📡 Posición enviada: ${Math.round(progreso * 100)}%`);
           } catch (e) {
-            // Silenciar errores de socket para no interrumpir la animación
+            console.warn('[TrackingScreen] ⚠️ Error enviando posición:', e);
           }
         }
 
@@ -430,28 +796,49 @@ export default function TrackingScreen({ route, navigation }) {
   const marcarComoEntregado = async () => {
     try {
       console.log('[TrackingScreen] Marcando envío como entregado...');
-      await envioService.marcarEntregado(envioId);
       
-      Alert.alert(
-        '✅ Envío Entregado',
-        'El camión ha llegado a su destino. El envío fue marcado como entregado automáticamente.',
-        [
-          {
-            text: 'Ver Historial',
-            onPress: () => navigation.navigate('Main', { screen: 'Historial' })
-          },
-          {
-            text: 'Volver',
-            onPress: () => navigation.goBack()
-          }
-        ]
-      );
+      // Mostrar indicador de carga
+      setLoading(true);
+      
+      const resultado = await envioService.marcarEntregado(envioId);
+      
+      setLoading(false);
+      
+      if (resultado?.success) {
+        Alert.alert(
+          '✅ Envío Entregado',
+          'El camión ha llegado a su destino. El envío fue marcado como entregado automáticamente.',
+          [
+            {
+              text: 'Ver Historial',
+              onPress: () => navigation.navigate('Main', { screen: 'Historial' })
+            },
+            {
+              text: 'Volver',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
 
-      // Actualizar datos
-      cargarDatos();
+        // Actualizar datos
+        cargarDatos();
+      } else {
+        throw new Error(resultado?.error || resultado?.message || 'Error desconocido');
+      }
     } catch (error) {
+      setLoading(false);
       console.error('❌ [TrackingScreen] Error al marcar como entregado:', error);
-      Alert.alert('❌ Error', `No se pudo marcar como entregado.\n\nDetalle: ${error.message}`);
+      
+      let mensajeError = error.message || 'Error desconocido';
+      
+      // Mensajes más amigables para errores comunes
+      if (mensajeError.includes('Network') || mensajeError.includes('conectar')) {
+        mensajeError = 'No se puede conectar al servidor.\n\nVerifica:\n• Laravel corriendo en 0.0.0.0:8001\n• Misma red WiFi\n• Firewall puerto 8001 abierto';
+      } else if (mensajeError.includes('Timeout') || mensajeError.includes('timeout')) {
+        mensajeError = 'El servidor no respondió a tiempo.\n\nIntenta nuevamente o verifica tu conexión.';
+      }
+      
+      Alert.alert('❌ Error', `No se pudo marcar como entregado.\n\n${mensajeError}`);
     }
   };
 
@@ -641,21 +1028,32 @@ export default function TrackingScreen({ route, navigation }) {
               </Marker>
             )}
 
-            {/* Ruta completa (gris claro) */}
+            {/* Ruta completa (gris claro) - RUTA REAL POR CALLES - SUAVIZADA */}
             {rutaReal.length > 0 && (
               <Polyline
                 coordinates={rutaReal}
                 strokeColor="#BDBDBD"
-                strokeWidth={6}
+                strokeWidth={7}
+                lineCap="round"
+                lineJoin="round"
+                miterLimit={10}
+                geodesic={false}
+                tappable={false}
+                lineDashPattern={[1]}
               />
             )}
 
-            {/* Ruta recorrida (verde) */}
+            {/* Ruta recorrida (verde) - PARTE COMPLETADA - SUAVIZADA */}
             {rutaRecorrida.length > 1 && (
               <Polyline
                 coordinates={rutaRecorrida}
                 strokeColor="#4CAF50"
-                strokeWidth={6}
+                strokeWidth={8}
+                lineCap="round"
+                lineJoin="round"
+                miterLimit={10}
+                geodesic={false}
+                tappable={false}
               />
             )}
           </MapView>
@@ -711,6 +1109,235 @@ export default function TrackingScreen({ route, navigation }) {
 
         <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* Modal de Checklist */}
+      <Portal>
+        <Modal
+          visible={checklistModalVisible}
+          onDismiss={() => setChecklistModalVisible(false)}
+          contentContainerStyle={styles.checklistModalContainer}
+          dismissable={true}
+        >
+          <View style={styles.checklistModalInner}>
+            <ScrollView 
+              style={styles.checklistModalContent}
+              contentContainerStyle={styles.checklistModalScrollContent}
+              showsVerticalScrollIndicator={true}
+              bounces={false}
+            >
+            <View style={styles.checklistModalHeader}>
+              <Icon name="clipboard-check" size={32} color="#4CAF50" />
+              <Text variant="headlineSmall" style={styles.checklistModalTitle}>
+                Checklist de Salida
+              </Text>
+              <Text variant="bodySmall" style={styles.checklistModalSubtitle}>
+                Verifica cada punto antes de iniciar el envío
+              </Text>
+            </View>
+
+            {/* Progreso */}
+            <View style={styles.checklistProgresoContainer}>
+              <View style={styles.checklistProgresoBar}>
+                <View style={[styles.checklistProgresoFill, { 
+                  width: `${Math.round((Object.values(checklistData).filter(v => v === true).length / CHECKLIST_ITEMS.length) * 100)}%` 
+                }]} />
+              </View>
+              <Text variant="bodySmall" style={styles.checklistProgresoText}>
+                {Object.values(checklistData).filter(v => v === true).length} de {CHECKLIST_ITEMS.length} verificados
+              </Text>
+            </View>
+
+            {/* Items del checklist */}
+            {CHECKLIST_ITEMS.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.checklistItem,
+                  !checklistData[item.id] && styles.checklistItemNoMarcado
+                ]}
+                onPress={() => toggleItem(item.id)}
+                activeOpacity={0.7}
+              >
+                <Checkbox
+                  status={checklistData[item.id] ? 'checked' : 'unchecked'}
+                  onPress={() => toggleItem(item.id)}
+                  color="#4CAF50"
+                />
+                <Text style={[
+                  styles.checklistItemLabel,
+                  checklistData[item.id] && styles.checklistItemLabelChecked
+                ]}>
+                  {item.label}
+                </Text>
+                {!checklistData[item.id] && (
+                  <TouchableOpacity
+                    onPress={() => tomarFotoParaItem(item.id)}
+                    style={styles.fotoBtn}
+                  >
+                    <Icon name="camera" size={20} color="#FF9800" />
+                  </TouchableOpacity>
+                )}
+                {checklistData[item.id] && (
+                  <Icon name="check-circle" size={20} color="#4CAF50" />
+                )}
+              </TouchableOpacity>
+            ))}
+
+            {/* Observaciones */}
+            <TextInput
+              mode="outlined"
+              label="Observaciones (opcional)"
+              placeholder="Escribe cualquier observación adicional..."
+              value={observaciones}
+              onChangeText={setObservaciones}
+              multiline
+              numberOfLines={3}
+              style={styles.checklistObservaciones}
+            />
+
+            {/* Sección de Firma */}
+            <View style={styles.checklistFirmaSection}>
+              <Text variant="titleSmall" style={styles.checklistFirmaTitle}>
+                Firma del Transportista
+              </Text>
+              {!firma ? (
+                <>
+                  <Button
+                    mode="outlined"
+                    icon="pencil"
+                    onPress={() => setMostrarFirma(true)}
+                    style={styles.checklistFirmaBtn}
+                  >
+                    Firmar Checklist
+                  </Button>
+                </>
+              ) : (
+                <View style={styles.checklistFirmaPreview}>
+                  <Text variant="bodySmall" style={styles.checklistFirmaTexto}>
+                    ✓ Firma registrada
+                  </Text>
+                  <Button
+                    mode="text"
+                    icon="pencil"
+                    onPress={() => {
+                      setFirma(null);
+                      setMostrarFirma(true);
+                    }}
+                    style={styles.checklistFirmaCambiarBtn}
+                  >
+                    Cambiar Firma
+                  </Button>
+                </View>
+              )}
+            </View>
+
+            {/* Botones */}
+            <View style={styles.checklistModalBotones}>
+              <Button
+                mode="outlined"
+                onPress={() => setChecklistModalVisible(false)}
+                style={styles.checklistCancelarBtn}
+                contentStyle={styles.checklistButtonContent}
+              >
+                Cancelar
+              </Button>
+              <Button
+                mode="contained"
+                icon="check-circle"
+                onPress={guardarChecklistEIniciar}
+                style={styles.checklistConfirmarBtn}
+                buttonColor="#4CAF50"
+                loading={guardandoChecklist}
+                disabled={guardandoChecklist || !checklistCompletado || !firma}
+                contentStyle={styles.checklistButtonContent}
+              >
+                {guardandoChecklist ? 'Guardando...' : 'Confirmar e Iniciar'}
+              </Button>
+            </View>
+            </ScrollView>
+          </View>
+        </Modal>
+
+        {/* Modal de Firma */}
+        <Portal>
+          <Modal
+            visible={mostrarFirma}
+            onDismiss={() => setMostrarFirma(false)}
+            contentContainerStyle={styles.firmaModalContainer}
+          >
+            <View style={styles.firmaModalInner}>
+              <View style={styles.firmaModalHeader}>
+                <Text variant="headlineSmall" style={styles.firmaModalTitle}>
+                  Firma del Transportista
+                </Text>
+                <Text variant="bodySmall" style={styles.firmaModalSubtitle}>
+                  Firma en el área de abajo para confirmar el checklist
+                </Text>
+              </View>
+              
+              <View style={styles.firmaCanvasContainer}>
+                <SignatureCanvas
+                  ref={signatureRef}
+                  onOK={handleOK}
+                  onEmpty={handleEmpty}
+                  descriptionText="Firma aquí"
+                  clearText="Limpiar"
+                  confirmText="Confirmar"
+                  webStyle={`
+                    .m-signature-pad {
+                      box-shadow: none;
+                      border: 2px solid #ddd;
+                      border-radius: 8px;
+                    }
+                    .m-signature-pad--body {
+                      border: none;
+                    }
+                    .m-signature-pad--body canvas {
+                      border-radius: 8px;
+                    }
+                  `}
+                  androidStyle={{
+                    backgroundColor: 'white',
+                    borderWidth: 2,
+                    borderColor: '#ddd',
+                    borderRadius: 8,
+                  }}
+                />
+              </View>
+
+              <View style={styles.firmaModalBotones}>
+                <Button
+                  mode="outlined"
+                  onPress={() => {
+                    setMostrarFirma(false);
+                    handleClear();
+                  }}
+                  style={styles.firmaCancelarBtn}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  mode="outlined"
+                  icon="eraser"
+                  onPress={handleClear}
+                  style={styles.firmaLimpiarBtn}
+                >
+                  Limpiar
+                </Button>
+                <Button
+                  mode="contained"
+                  icon="check"
+                  onPress={handleConfirm}
+                  style={styles.firmaConfirmarBtn}
+                  buttonColor="#4CAF50"
+                >
+                  Confirmar
+                </Button>
+              </View>
+            </View>
+          </Modal>
+        </Portal>
+      </Portal>
     </View>
   );
 }
@@ -927,5 +1554,189 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#2E7D32',
     fontWeight: 'bold',
+  },
+  checklistModalWrapper: {
+    margin: 0,
+  },
+  checklistModalContainer: {
+    backgroundColor: 'white',
+    margin: 0,
+    borderRadius: 0,
+    height: '100%',
+    width: '100%',
+    alignSelf: 'center',
+  },
+  checklistModalInner: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  checklistModalContent: {
+    flex: 1,
+  },
+  checklistModalScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+    paddingTop: 20,
+    flexGrow: 1,
+  },
+  checklistModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  checklistModalTitle: {
+    fontWeight: 'bold',
+    marginTop: 10,
+    color: '#333',
+  },
+  checklistModalSubtitle: {
+    color: '#666',
+    marginTop: 5,
+  },
+  checklistProgresoContainer: {
+    marginBottom: 20,
+  },
+  checklistProgresoBar: {
+    height: 8,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  checklistProgresoFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+  },
+  checklistProgresoText: {
+    textAlign: 'center',
+    color: '#666',
+  },
+  checklistItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    marginBottom: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    minHeight: 50,
+  },
+  checklistItemNoMarcado: {
+    backgroundColor: '#FFF3E0',
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+  },
+  checklistItemLabel: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 14,
+    color: '#333',
+    flexWrap: 'wrap',
+  },
+  checklistItemLabelChecked: {
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  fotoBtn: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  checklistObservaciones: {
+    marginTop: 10,
+    marginBottom: 10,
+    minHeight: 80,
+  },
+  checklistModalBotones: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    marginBottom: 10,
+    gap: 10,
+  },
+  checklistCancelarBtn: {
+    flex: 1,
+  },
+  checklistConfirmarBtn: {
+    flex: 1,
+  },
+  checklistButtonContent: {
+    paddingVertical: 8,
+    minHeight: 48,
+  },
+  checklistFirmaSection: {
+    marginTop: 20,
+    marginBottom: 10,
+    padding: 15,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  checklistFirmaTitle: {
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  checklistFirmaBtn: {
+    marginTop: 5,
+  },
+  checklistFirmaPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  checklistFirmaTexto: {
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  checklistFirmaCambiarBtn: {
+    marginLeft: 10,
+  },
+  firmaModalContainer: {
+    backgroundColor: 'white',
+    margin: 10,
+    borderRadius: 12,
+    maxHeight: '90%',
+    width: '95%',
+    alignSelf: 'center',
+  },
+  firmaModalInner: {
+    padding: 20,
+  },
+  firmaModalHeader: {
+    marginBottom: 20,
+  },
+  firmaModalTitle: {
+    fontWeight: 'bold',
+    marginBottom: 5,
+    color: '#333',
+  },
+  firmaModalSubtitle: {
+    color: '#666',
+  },
+  firmaCanvasContainer: {
+    height: 300,
+    marginBottom: 20,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+  },
+  firmaModalBotones: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  firmaCancelarBtn: {
+    flex: 1,
+  },
+  firmaLimpiarBtn: {
+    flex: 1,
+  },
+  firmaConfirmarBtn: {
+    flex: 1,
   },
 });

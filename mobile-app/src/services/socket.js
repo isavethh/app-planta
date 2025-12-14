@@ -2,6 +2,7 @@ import { io } from 'socket.io-client';
 import { Platform } from 'react-native';
 
 // URL del servidor WebSocket con namespace /tracking
+// El servidor Node.js corre en puerto 3001
 const SOCKET_URL = Platform.OS === 'web' 
   ? 'http://localhost:3001/tracking'
   : 'http://192.168.0.129:3001/tracking';
@@ -40,13 +41,19 @@ class SocketService {
       
       this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
-        autoConnect: true,
+        autoConnect: false, // No conectar automáticamente
         reconnection: true,
-        reconnectionAttempts: 3,
+        reconnectionAttempts: 10, // Más intentos
         reconnectionDelay: 2000,
-        timeout: 5000,
-        forceNew: true,
+        reconnectionDelayMax: 10000,
+        timeout: 20000, // 20 segundos para dar más tiempo
+        forceNew: false, // No forzar nueva conexión
+        upgrade: true,
+        rememberUpgrade: true,
       });
+      
+      // Conectar manualmente después de configurar
+      this.socket.connect();
 
       this.socket.on('connect', () => {
         this.isConnecting = false;
@@ -62,7 +69,13 @@ class SocketService {
       this.socket.on('connect_error', (error) => {
         this.isConnecting = false;
         // Solo loguear warning, no error para evitar el popup rojo
-        console.warn('⚠️ [Socket] Error de conexión (continuando sin socket):', error.message);
+        // El servidor Node.js puede no estar corriendo, no es crítico
+        if (error.message === 'timeout' || error.message?.includes('timeout')) {
+          console.warn('⚠️ [Socket] Timeout de conexión - El servidor Node.js puede no estar corriendo');
+          console.warn('   💡 Para habilitar websockets, ejecuta: cd applanta/backend && npm start');
+        } else {
+          console.warn('⚠️ [Socket] Error de conexión (continuando sin socket):', error.message);
+        }
       });
 
       this.socket.on('error', (error) => {
