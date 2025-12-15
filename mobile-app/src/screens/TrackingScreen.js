@@ -49,6 +49,13 @@ export default function TrackingScreen({ route, navigation }) {
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
   const simulandoRef = useRef(false); // Ref para evitar stale closure
+  // Estados para modal de incidente
+  const [incidenteModalVisible, setIncidenteModalVisible] = useState(false);
+  const [tipoIncidente, setTipoIncidente] = useState('');
+  const [descripcionIncidente, setDescripcionIncidente] = useState('');
+  const [accionIncidente, setAccionIncidente] = useState('continuar'); // 'cancelar' o 'continuar'
+  const [fotoIncidente, setFotoIncidente] = useState(null);
+  const [reportandoIncidente, setReportandoIncidente] = useState(false);
 
   // Inicializar checklist
   useEffect(() => {
@@ -842,6 +849,96 @@ export default function TrackingScreen({ route, navigation }) {
     }
   };
 
+  const tomarFotoIncidente = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos de cámara para tomar foto del incidente');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setFotoIncidente(result.assets[0].base64);
+      }
+    } catch (error) {
+      console.error('[TrackingScreen] Error tomando foto de incidente:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  const reportarIncidente = async () => {
+    if (!tipoIncidente.trim() || !descripcionIncidente.trim()) {
+      Alert.alert('⚠️ Campos Requeridos', 'Por favor completa el tipo y descripción del incidente');
+      return;
+    }
+
+    try {
+      setReportandoIncidente(true);
+
+      // Obtener ubicación actual si está disponible
+      let ubicacionLat = null;
+      let ubicacionLng = null;
+      if (rutaReal.length > 0 && indicePuntoActual < rutaReal.length) {
+        const puntoActual = rutaReal[indicePuntoActual];
+        ubicacionLat = puntoActual.latitude;
+        ubicacionLng = puntoActual.longitude;
+      }
+
+      const datos = {
+        tipo_incidente: tipoIncidente,
+        descripcion: descripcionIncidente,
+        accion: accionIncidente,
+        foto_base64: fotoIncidente,
+        ubicacion_lat: ubicacionLat,
+        ubicacion_lng: ubicacionLng,
+      };
+
+      const resultado = await envioService.reportarIncidente(envioId, datos);
+
+      if (resultado?.success) {
+        Alert.alert(
+          '✅ Incidente Reportado',
+          accionIncidente === 'cancelar'
+            ? 'El incidente ha sido reportado y el envío ha sido cancelado. Se notificó al administrador y al almacén.'
+            : 'El incidente ha sido reportado pero el envío continúa. Se notificó al administrador y al almacén.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setIncidenteModalVisible(false);
+                setTipoIncidente('');
+                setDescripcionIncidente('');
+                setAccionIncidente('continuar');
+                setFotoIncidente(null);
+                // Si se canceló, volver atrás
+                if (accionIncidente === 'cancelar') {
+                  navigation.goBack();
+                } else {
+                  cargarDatos();
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        throw new Error(resultado?.error || resultado?.message || 'Error desconocido');
+      }
+    } catch (error) {
+      console.error('❌ [TrackingScreen] Error al reportar incidente:', error);
+      Alert.alert('❌ Error', `No se pudo reportar el incidente.\n\n${error.message || 'Error desconocido'}`);
+    } finally {
+      setReportandoIncidente(false);
+    }
+  };
+
   const getEstadoColor = (estado) => {
     const colores = {
       'pendiente': '#FF9800',
@@ -1088,22 +1185,63 @@ export default function TrackingScreen({ route, navigation }) {
               </Text>
             </>
           ) : simulando ? (
-            <View style={styles.simulandoBox}>
-              <ActivityIndicator size={48} color="#4CAF50" />
-              <Text variant="titleLarge" style={styles.simulandoText}>
-                🚚 Camión en Ruta
-              </Text>
-              <Text variant="bodyLarge" style={styles.simulandoSubtext}>
-                Siguiendo ruta real de Google Maps
-              </Text>
-            </View>
+            <>
+              <View style={styles.simulandoBox}>
+                <ActivityIndicator size={48} color="#4CAF50" />
+                <Text variant="titleLarge" style={styles.simulandoText}>
+                  🚚 Camión en Ruta
+                </Text>
+                <Text variant="bodyLarge" style={styles.simulandoSubtext}>
+                  Siguiendo ruta real de Google Maps
+                </Text>
+              </View>
+              {/* Botón Reportar Incidente - Cuando está simulando (en ruta) */}
+              <Button
+                mode="outlined"
+                icon="alert-circle"
+                onPress={() => {
+                  // Detener la simulación cuando se abre el modal
+                  if (intervalRef.current) {
+                    clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                  }
+                  setSimulando(false);
+                  simulandoRef.current = false;
+                  setIncidenteModalVisible(true);
+                }}
+                style={[styles.button, styles.incidenteButton]}
+                contentStyle={styles.buttonContent}
+                labelStyle={[styles.buttonLabel, { color: '#F44336' }]}
+                buttonColor="#FFF"
+                textColor="#F44336"
+              >
+                Reportar Incidente
+              </Button>
+            </>
           ) : (
-            <View style={styles.completadoBox}>
-              <Icon name="map-check" size={48} color="#4CAF50" />
-              <Text variant="titleMedium" style={styles.completadoText}>
-                Simulación Completada
-              </Text>
-            </View>
+            <>
+              <View style={styles.completadoBox}>
+                <Icon name="map-check" size={48} color="#4CAF50" />
+                <Text variant="titleMedium" style={styles.completadoText}>
+                  Simulación Completada
+                </Text>
+              </View>
+              {/* Botón Reportar Incidente - También cuando la simulación terminó pero sigue en tránsito */}
+              {envio.estado === 'en_transito' && (
+                <Button
+                  mode="outlined"
+                  icon="alert-circle"
+                  onPress={() => setIncidenteModalVisible(true)}
+                  style={[styles.button, styles.incidenteButton]}
+                  contentStyle={styles.buttonContent}
+                  labelStyle={[styles.buttonLabel, { color: '#F44336' }]}
+                  buttonColor="#FFF"
+                  textColor="#F44336"
+                >
+                  Reportar Incidente
+                </Button>
+              )}
+            </>
           )}
         </Surface>
 
@@ -1257,6 +1395,7 @@ export default function TrackingScreen({ route, navigation }) {
             </ScrollView>
           </View>
         </Modal>
+      </Portal>
 
         {/* Modal de Firma */}
         <Portal>
@@ -1337,7 +1476,157 @@ export default function TrackingScreen({ route, navigation }) {
             </View>
           </Modal>
         </Portal>
-      </Portal>
+
+        {/* Modal de Reportar Incidente */}
+        <Portal>
+          <Modal
+            visible={incidenteModalVisible}
+            onDismiss={() => {
+              setIncidenteModalVisible(false);
+              // Limpiar campos al cerrar
+              setTipoIncidente('');
+              setDescripcionIncidente('');
+              setAccionIncidente('continuar');
+              setFotoIncidente(null);
+            }}
+            contentContainerStyle={styles.incidenteModalContainer}
+            dismissable={true}
+          >
+          <View style={styles.incidenteModalInner}>
+              <ScrollView 
+                style={styles.incidenteModalContent}
+                contentContainerStyle={styles.incidenteModalScrollContent}
+                showsVerticalScrollIndicator={true}
+              >
+                <View style={styles.incidenteModalHeader}>
+                  <Icon name="alert-circle" size={32} color="#F44336" />
+                  <Text variant="headlineSmall" style={styles.incidenteModalTitle}>
+                    Reportar Incidente
+                  </Text>
+                  <Text variant="bodySmall" style={styles.incidenteModalSubtitle}>
+                    Reporta cualquier incidente durante el trayecto
+                  </Text>
+                </View>
+
+                {/* Tipo de Incidente */}
+                <TextInput
+                  mode="outlined"
+                  label="Tipo de Incidente *"
+                  placeholder="Ej: Accidente, Avería, Robo, etc."
+                  value={tipoIncidente}
+                  onChangeText={setTipoIncidente}
+                  style={styles.incidenteInput}
+                />
+
+                {/* Descripción */}
+                <TextInput
+                  mode="outlined"
+                  label="Descripción del Incidente *"
+                  placeholder="Describe detalladamente lo que ocurrió..."
+                  value={descripcionIncidente}
+                  onChangeText={setDescripcionIncidente}
+                  multiline
+                  numberOfLines={4}
+                  style={styles.incidenteInput}
+                />
+
+                {/* Foto (Opcional) */}
+                <View style={styles.incidenteFotoSection}>
+                  <Text variant="titleSmall" style={styles.incidenteFotoTitle}>
+                    Foto del Incidente (Opcional)
+                  </Text>
+                  {fotoIncidente ? (
+                    <View style={styles.incidenteFotoPreview}>
+                      <Text variant="bodySmall" style={styles.incidenteFotoTexto}>
+                        ✓ Foto capturada
+                      </Text>
+                      <Button
+                        mode="text"
+                        icon="camera"
+                        onPress={tomarFotoIncidente}
+                        style={styles.incidenteFotoCambiarBtn}
+                      >
+                        Cambiar Foto
+                      </Button>
+                    </View>
+                  ) : (
+                    <Button
+                      mode="outlined"
+                      icon="camera"
+                      onPress={tomarFotoIncidente}
+                      style={styles.incidenteFotoBtn}
+                    >
+                      Tomar Foto
+                    </Button>
+                  )}
+                </View>
+
+                {/* Acción */}
+                <View style={styles.incidenteAccionSection}>
+                  <Text variant="titleSmall" style={styles.incidenteAccionTitle}>
+                    ¿Qué deseas hacer? *
+                  </Text>
+                  <View style={styles.incidenteAccionButtons}>
+                    <Button
+                      mode={accionIncidente === 'continuar' ? 'contained' : 'outlined'}
+                      icon="arrow-right-circle"
+                      onPress={() => setAccionIncidente('continuar')}
+                      style={styles.incidenteAccionBtn}
+                      buttonColor={accionIncidente === 'continuar' ? '#4CAF50' : undefined}
+                    >
+                      Continuar Envío
+                    </Button>
+                    <Button
+                      mode={accionIncidente === 'cancelar' ? 'contained' : 'outlined'}
+                      icon="cancel"
+                      onPress={() => setAccionIncidente('cancelar')}
+                      style={styles.incidenteAccionBtn}
+                      buttonColor={accionIncidente === 'cancelar' ? '#F44336' : undefined}
+                    >
+                      Cancelar Envío
+                    </Button>
+                  </View>
+                  <Text variant="bodySmall" style={styles.incidenteAccionHint}>
+                    {accionIncidente === 'continuar'
+                      ? 'El envío continuará pero se registrará el incidente'
+                      : 'El envío será cancelado y se notificará al almacén'}
+                  </Text>
+                </View>
+
+                {/* Botones */}
+                <View style={styles.incidenteModalBotones}>
+                  <Button
+                    mode="outlined"
+                    onPress={() => {
+                      setIncidenteModalVisible(false);
+                      setTipoIncidente('');
+                      setDescripcionIncidente('');
+                      setAccionIncidente('continuar');
+                      setFotoIncidente(null);
+                    }}
+                    style={styles.incidenteCancelarBtn}
+                    contentStyle={styles.incidenteButtonContent}
+                    disabled={reportandoIncidente}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    mode="contained"
+                    icon="alert-circle"
+                    onPress={reportarIncidente}
+                    style={styles.incidenteConfirmarBtn}
+                    buttonColor="#F44336"
+                    loading={reportandoIncidente}
+                    disabled={reportandoIncidente || !tipoIncidente.trim() || !descripcionIncidente.trim()}
+                    contentStyle={styles.incidenteButtonContent}
+                  >
+                    {reportandoIncidente ? 'Reportando...' : 'Reportar Incidente'}
+                  </Button>
+                </View>
+              </ScrollView>
+            </View>
+          </Modal>
+        </Portal>
     </View>
   );
 }
@@ -1738,5 +2027,115 @@ const styles = StyleSheet.create({
   },
   firmaConfirmarBtn: {
     flex: 1,
+  },
+  incidenteButton: {
+    marginTop: 12,
+    borderColor: '#F44336',
+  },
+  incidenteModalContainer: {
+    backgroundColor: 'white',
+    margin: 0,
+    borderRadius: 0,
+    height: '100%',
+    width: '100%',
+    alignSelf: 'center',
+    padding: 0,
+  },
+  incidenteModalInner: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  incidenteModalContent: {
+    flex: 1,
+  },
+  incidenteModalScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+    paddingTop: 20,
+  },
+  incidenteModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  incidenteModalTitle: {
+    fontWeight: 'bold',
+    marginTop: 10,
+    color: '#333',
+  },
+  incidenteModalSubtitle: {
+    color: '#666',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  incidenteInput: {
+    marginBottom: 15,
+  },
+  incidenteFotoSection: {
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  incidenteFotoTitle: {
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  incidenteFotoBtn: {
+    marginTop: 5,
+  },
+  incidenteFotoPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  incidenteFotoTexto: {
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  incidenteFotoCambiarBtn: {
+    marginLeft: 10,
+  },
+  incidenteAccionSection: {
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  incidenteAccionTitle: {
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  incidenteAccionButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  incidenteAccionBtn: {
+    flex: 1,
+  },
+  incidenteAccionHint: {
+    color: '#666',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  incidenteModalBotones: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    marginBottom: 10,
+    gap: 10,
+  },
+  incidenteCancelarBtn: {
+    flex: 1,
+  },
+  incidenteConfirmarBtn: {
+    flex: 1,
+  },
+  incidenteButtonContent: {
+    paddingVertical: 8,
+    minHeight: 48,
   },
 });

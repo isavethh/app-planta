@@ -3,10 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 // URL del backend - CONECTADO A LARAVEL (puerto 8001)
-// IP de WiFi: 192.168.0.129
+// IP de WiFi: 10.26.10.192
 export const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:8001/api'  // Para web
-  : 'http://192.168.0.129:8001/api'; // ✅ IP WiFi actual
+  : 'http://10.26.10.192:8001/api'; // ✅ IP WiFi actual
 
 console.log('🌐 [API] URL configurada:', API_URL);
 
@@ -320,6 +320,25 @@ export const envioService = {
   rechazarAsignacion: async (id, motivo) => {
     const response = await api.post(`/envios/${id}/rechazar`, { motivo });
     return response.data;
+  },
+
+  reportarIncidente: async (envioId, datos) => {
+    console.log(`🚨 [API] Reportando incidente para envío ${envioId}...`);
+    try {
+      const response = await api.post(`/envios/${envioId}/incidentes`, datos, {
+        timeout: 30000,
+      });
+      console.log(`✅ [API] Incidente reportado exitosamente`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ [API] Error reportando incidente:`, error.message);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Timeout: El servidor no respondió a tiempo. Verifica tu conexión.');
+      } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network request failed')) {
+        throw new Error('Error de red: No se puede conectar al servidor.');
+      }
+      throw error;
+    }
   },
 };
 

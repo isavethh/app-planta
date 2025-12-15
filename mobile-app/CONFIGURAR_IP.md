@@ -11,10 +11,10 @@ Busca esta línea (alrededor de la línea 8-10):
 ```javascript
 export const API_URL = Platform.OS === 'web' 
   ? 'http://localhost:8001/api'  // Para web
-  : 'http://192.168.0.129:8001/api'; // ✅ IP CORRECTA
+  : 'http://10.26.10.192:8001/api'; // ✅ IP CORRECTA
 ```
 
-**CAMBIA `192.168.0.129` por TU IP local.**
+**CAMBIA `10.26.10.192` por TU IP local.**
 
 ### 2. Encontrar tu IP local
 

@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 // El servidor Node.js corre en puerto 3001
 const SOCKET_URL = Platform.OS === 'web' 
   ? 'http://localhost:3001/tracking'
-  : 'http://192.168.0.129:3001/tracking';
+  : 'http://10.26.10.192:3001/tracking';
 
 class SocketService {
   constructor() {

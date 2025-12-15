@@ -21,7 +21,7 @@ export const API_URL = Platform.OS === 'web'
 
 Tienes estas IPs disponibles (según ipconfig):
 1. `192.168.56.1` - VirtualBox (actual)
-2. `192.168.0.129` - Red local principal
+2. `10.26.10.192` - Red local principal (actual)
 3. `100.125.212.89` - VPN/Red externa
 
 **Prueba cambiando la IP en la línea 13 a cada una hasta que funcione.**

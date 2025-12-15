@@ -4,7 +4,7 @@ require('dotenv').config();
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
-  database: 'Plantalogistica',  // NOMBRE CORRECTO DE LA BD
+  database: process.env.DB_NAME || 'Plantalogistica',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
 });
@@ -12,7 +12,7 @@ const pool = new Pool({
 console.log('🔌 Configuración de base de datos:');
 console.log('   Host:', process.env.DB_HOST || 'localhost');
 console.log('   Port:', process.env.DB_PORT || 5432);
-console.log('   Database: Plantalogistica');
+console.log('   Database:', process.env.DB_NAME || 'Plantalogistica');
 console.log('   User:', process.env.DB_USER || 'postgres');
 console.log('   Password:', process.env.DB_PASSWORD ? '***' : '(vacía)');
 

@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: org2-backend
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DB_HOST: org2-db
+      DB_PORT: 5432
+      DB_NAME: org2_db
+      DB_USER: admin
+      DB_PASSWORD: admin123
+      JWT_SECRET: tu_secreto_super_seguro_cambialo_en_produccion
+      JWT_EXPIRES_IN: 7d
+      PLANTA_LAT: -12.0464
+      PLANTA_LNG: -77.0428
+      PLANTA_DIRECCION: Lima, Perú
+      LARAVEL_API_URL: http://org2-laravel:9000/api
+    ports:
+      - "3000:3000"
+    networks:
+      - org2-net
+
+networks:
+  org2-net:
+    external: true
+

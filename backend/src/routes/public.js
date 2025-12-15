@@ -202,7 +202,7 @@ router.get('/almacenes', async (req, res) => {
 router.get('/usuarios-laravel', async (req, res) => {
   try {
     const axios = require('axios');
-    const laravelUrl = process.env.LARAVEL_API_URL || 'http://10.26.13.220:8000/api';
+    const laravelUrl = process.env.LARAVEL_API_URL || 'http://10.26.10.192:8000/api';
     
     const response = await axios.get(`${laravelUrl}/usuarios`);
     
@@ -226,7 +226,7 @@ router.get('/usuarios-laravel', async (req, res) => {
 router.get('/envios-laravel', async (req, res) => {
   try {
     const axios = require('axios');
-    const laravelUrl = process.env.LARAVEL_API_URL || 'http://10.26.13.220:8000/api';
+    const laravelUrl = process.env.LARAVEL_API_URL || 'http://10.26.10.192:8000/api';
     const { usuario_id } = req.query;
     
     const url = usuario_id 

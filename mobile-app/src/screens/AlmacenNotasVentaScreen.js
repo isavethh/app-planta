@@ -111,7 +111,7 @@ export default function AlmacenNotasVentaScreen({ navigation }) {
         <TouchableOpacity
           style={styles.verButton}
           onPress={() => {
-            const notaUrl = `http://192.168.0.129:8001/api/envios/${item.envio_id}/nota-venta`;
+            const notaUrl = `http://10.26.10.192:8001/api/envios/${item.envio_id}/nota-venta`;
             navigation.navigate('DocumentoEnvio', { 
               documentURL: notaUrl,
               codigo: item.numero_nota

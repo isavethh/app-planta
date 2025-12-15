@@ -21,6 +21,43 @@ API REST para el sistema de gestión de envíos Applanta.
 
 ## 🔧 Instalación
 
+### 🐳 Opción 1: Usando Docker (Recomendado)
+
+Este proyecto está dockerizado y comparte la misma base de datos PostgreSQL con el proyecto Laravel.
+
+**Requisitos:**
+- Docker y Docker Compose instalados
+- El proyecto Laravel debe estar ejecutándose primero (para crear la red `org2-net` y la base de datos)
+
+**Pasos:**
+
+1. Asegúrate de que el proyecto Laravel esté corriendo:
+```bash
+cd ../Planta/plantaCruds
+docker compose up -d
+```
+
+2. Construir y ejecutar el backend:
+```bash
+cd backend
+docker compose up --build -d
+```
+
+3. Ver logs:
+```bash
+docker logs org2-backend -f
+```
+
+4. Acceder al API:
+```
+http://localhost:3000/api
+http://localhost:3000/health
+```
+
+**Nota importante:** El backend usa la misma base de datos (`org2_db`) y red Docker (`org2-net`) que Laravel.
+
+### 💻 Opción 2: Instalación Local (Sin Docker)
+
 1. Clonar el repositorio e instalar dependencias:
 ```bash
 cd backend
@@ -29,13 +66,13 @@ npm install
 
 2. Configurar variables de entorno:
 ```bash
-cp .env.example .env
+cp env.example .env
 # Editar .env con tus configuraciones
 ```
 
 3. Crear la base de datos PostgreSQL:
 ```sql
-CREATE DATABASE applanta_db;
+CREATE DATABASE org2_db;
 ```
 
 4. Inicializar la base de datos (crear tablas y datos de prueba):
