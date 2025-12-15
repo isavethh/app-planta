@@ -20,13 +20,21 @@ services:
       PLANTA_LAT: -12.0464
       PLANTA_LNG: -77.0428
       PLANTA_DIRECCION: Lima, Perú
-      LARAVEL_API_URL: http://org2-laravel:9000/api
-    ports:
-      - "3000:3000"
+      LARAVEL_API_URL: http://orgtrack2:80/api
+    expose:
+      - "3000"
+    #ports:
+    #  - "3000:3000"
     networks:
-      - org2-net
+      - sistemaplanta_org2-net
+      - internal-network
+      - proxy-network
 
 networks:
-  org2-net:
+  sistemaplanta_org2-net:
+    external: true
+  internal-network:
+    external: true
+  proxy-network:
     external: true
 
