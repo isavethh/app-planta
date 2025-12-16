@@ -309,10 +309,21 @@ export const envioService = {
 
   // Alias para compatibilidad con EnviosScreen
   aceptarAsignacion: async (id, transportistaData) => {
-    const response = await api.post(`/envios/${id}/aceptar`, {
+    const payload = {
       transportista_nombre: transportistaData?.nombre || 'Transportista',
       transportista_email: transportistaData?.email || 'sin@email.com'
-    });
+    };
+    
+    // Incluir firma_base64 si está presente
+    if (transportistaData?.firma_base64) {
+      payload.firma_base64 = transportistaData.firma_base64;
+      console.log('[api.js] Enviando firma base64 con aceptación:', {
+        envio_id: id,
+        firma_length: transportistaData.firma_base64.length
+      });
+    }
+    
+    const response = await api.post(`/envios/${id}/aceptar`, payload);
     return response.data;
   },
 

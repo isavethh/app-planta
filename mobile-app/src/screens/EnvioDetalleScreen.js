@@ -105,8 +105,21 @@ export default function EnvioDetalleScreen({ route, navigation }) {
 
     try {
       if (accionPendiente === 'aceptar') {
+        // Verificar que haya firma antes de aceptar
+        if (!firma) {
+          Alert.alert('Firma requerida', 'Por favor, captura tu firma antes de aceptar el envío');
+          setActionLoading(false);
+          setMostrarFirma(true);
+          return;
+        }
+        
         // Aceptar envío y generar nota de venta automáticamente
-        console.log('[EnvioDetalle] Aceptando envío con firma...');
+        console.log('[EnvioDetalle] Aceptando envío con firma...', {
+          envioId,
+          tieneFirma: !!firma,
+          firmaLength: firma ? firma.length : 0
+        });
+        
         const result = await envioService.aceptarAsignacion(envioId, {
           nombre: 'Transportista', // TODO: obtener de userInfo
           email: 'transportista@example.com', // TODO: obtener de userInfo
