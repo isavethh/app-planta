@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, ScrollView, Alert, StatusBar, Platform } from 'react-native';
-import { Card, Text, Chip, FAB, Button, Searchbar, SegmentedButtons, Badge } from 'react-native-paper';
+import { Card, Text, Chip, FAB, Button, Searchbar, SegmentedButtons, Badge, Modal, Portal } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
 import { envioService, rutasMultiService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import SignatureCanvas from 'react-native-signature-canvas';
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
@@ -22,6 +23,10 @@ export default function EnviosScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [mostrarFirma, setMostrarFirma] = useState(false);
+  const [envioParaAceptar, setEnvioParaAceptar] = useState(null);
+  const [firma, setFirma] = useState(null);
+  const signatureRef = useRef(null);
 
   const esTransportista = userInfo?.tipo === 'transportista' || userInfo?.rol_nombre === 'transportista';
   
@@ -122,33 +127,93 @@ export default function EnviosScreen({ navigation }) {
     setRefreshing(false);
   };
 
+  // Manejar firma
+  const handleOK = (signature) => {
+    console.log('[EnviosScreen] Firma capturada en handleOK:', {
+      tieneSignature: !!signature,
+      signatureType: typeof signature,
+      signatureLength: signature ? signature.length : 0,
+      signaturePreview: signature ? signature.substring(0, 50) : 'N/A'
+    });
+    
+    if (!signature) {
+      Alert.alert('Error', 'No se pudo capturar la firma. Por favor, intenta de nuevo.');
+      return;
+    }
+    
+    // Asegurar que la firma tenga el formato correcto (base64)
+    let firmaFormateada = signature;
+    if (!signature.startsWith('data:image')) {
+      firmaFormateada = 'data:image/png;base64,' + signature;
+    }
+    
+    setFirma(firmaFormateada);
+    setMostrarFirma(false);
+    console.log('[EnviosScreen] Firma guardada:', {
+      tieneFirma: !!firmaFormateada,
+      firmaLength: firmaFormateada.length
+    });
+    
+    // Aceptar el envío con la firma
+    if (envioParaAceptar) {
+      aceptarEnvioConFirma(envioParaAceptar, firmaFormateada);
+    }
+  };
+
+  const handleClear = () => {
+    signatureRef.current?.clearSignature();
+  };
+
+  const handleConfirm = () => {
+    console.log('[EnviosScreen] handleConfirm: Leyendo firma del canvas');
+    if (signatureRef.current) {
+      signatureRef.current.readSignature();
+    } else {
+      Alert.alert('Error', 'No se pudo acceder al canvas de firma');
+    }
+  };
+
+  const handleEmpty = () => {
+    Alert.alert('Firma requerida', 'Por favor, dibuja tu firma en el área antes de confirmar');
+  };
+
+  const aceptarEnvioConFirma = async (envioId, firmaParaEnviar) => {
+    try {
+      console.log('[EnviosScreen] Aceptando envío con firma:', {
+        envioId,
+        tieneFirma: !!firmaParaEnviar,
+        firmaLength: firmaParaEnviar ? firmaParaEnviar.length : 0
+      });
+      
+      if (!firmaParaEnviar) {
+        Alert.alert('Error', 'No se encontró la firma. Por favor, captura tu firma nuevamente.');
+        setMostrarFirma(true);
+        return;
+      }
+      
+      const result = await envioService.aceptarAsignacion(envioId, {
+        nombre: userInfo.name || 'Transportista',
+        email: userInfo.email || 'sin@email.com',
+        firma_base64: firmaParaEnviar
+      });
+      
+      console.log('[EnviosScreen] Envío aceptado:', result);
+      Alert.alert('✅ Éxito', 'Envío aceptado. Tu firma digital ha sido registrada. Ya puedes iniciar la ruta.');
+      
+      // Limpiar estado
+      setFirma(null);
+      setEnvioParaAceptar(null);
+      cargarEnvios();
+    } catch (error) {
+      console.error('❌ [EnviosScreen] Error al aceptar:', error);
+      Alert.alert('❌ Error', `No se pudo aceptar el envío.\n\nDetalle: ${error.message}`);
+    }
+  };
+
   const handleAceptarAsignacion = async (envioId) => {
-    Alert.alert(
-      'Aceptar Asignación',
-      '¿Deseas aceptar este envío? Tu firma digital quedará registrada.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Aceptar y Firmar',
-          onPress: async () => {
-            try {
-              console.log(`[EnviosScreen] Aceptando envío ID: ${envioId}`);
-              console.log(`[EnviosScreen] Transportista: ${userInfo.name} (${userInfo.email})`);
-              const result = await envioService.aceptarAsignacion(envioId, {
-                nombre: userInfo.name || 'Transportista',
-                email: userInfo.email || 'sin@email.com'
-              });
-              console.log('[EnviosScreen] Envío aceptado con firma:', result);
-              Alert.alert('✅ Éxito', 'Envío aceptado. Tu firma digital ha sido registrada. Ya puedes iniciar la ruta.');
-              cargarEnvios();
-            } catch (error) {
-              console.error('❌ [EnviosScreen] Error al aceptar:', error);
-              Alert.alert('❌ Error', `No se pudo aceptar el envío.\n\nDetalle: ${error.message}`);
-            }
-          },
-        },
-      ]
-    );
+    // Mostrar modal de firma antes de aceptar
+    setEnvioParaAceptar(envioId);
+    setMostrarFirma(true);
   };
 
   const handleRechazarAsignacion = async (envioId) => {
@@ -842,6 +907,72 @@ export default function EnviosScreen({ navigation }) {
         style={styles.fab}
         onPress={() => navigation.navigate('QRScanner')}
       />
+
+      {/* Modal de Firma */}
+      <Portal>
+        <Modal
+          visible={mostrarFirma}
+          onDismiss={() => {
+            setMostrarFirma(false);
+            setEnvioParaAceptar(null);
+            setFirma(null);
+          }}
+          contentContainerStyle={styles.modalFirma}
+        >
+          <View style={styles.modalFirmaContent}>
+            <Text variant="titleLarge" style={styles.modalFirmaTitle}>
+              Firma Digital
+            </Text>
+            <Text variant="bodyMedium" style={styles.modalFirmaSubtitle}>
+              Por favor, firma para aceptar el envío
+            </Text>
+            <View style={styles.signatureContainer}>
+              <SignatureCanvas
+                ref={signatureRef}
+                onOK={handleOK}
+                onEmpty={handleEmpty}
+                descriptionText=""
+                clearText="Limpiar"
+                confirmText="Confirmar"
+                webStyle={`
+                  .m-signature-pad {
+                    box-shadow: none;
+                    border: 2px solid #ddd;
+                    border-radius: 8px;
+                  }
+                  .m-signature-pad--body {
+                    border: none;
+                  }
+                  .m-signature-pad--body canvas {
+                    border-radius: 8px;
+                  }
+                `}
+              />
+            </View>
+            <View style={styles.modalFirmaButtons}>
+              <Button
+                mode="outlined"
+                onPress={() => {
+                  setMostrarFirma(false);
+                  setEnvioParaAceptar(null);
+                  setFirma(null);
+                }}
+                style={styles.modalFirmaButton}
+              >
+                Cancelar
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleConfirm}
+                style={[styles.modalFirmaButton, { marginLeft: 10 }]}
+                buttonColor="#4CAF50"
+              >
+                Confirmar Firma
+              </Button>
+            </View>
+          </View>
+        </Modal>
+      </Portal>
     </View>
   );
 }
@@ -1040,6 +1171,41 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#4CAF50',
+  },
+  modalFirma: {
+    backgroundColor: 'white',
+    padding: 20,
+    margin: 20,
+    borderRadius: 12,
+  },
+  modalFirmaContent: {
+    width: '100%',
+  },
+  modalFirmaTitle: {
+    textAlign: 'center',
+    marginBottom: 10,
+    fontWeight: 'bold',
+  },
+  modalFirmaSubtitle: {
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#666',
+  },
+  signatureContainer: {
+    height: 250,
+    marginVertical: 20,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  modalFirmaButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 20,
+  },
+  modalFirmaButton: {
+    minWidth: 100,
   },
 });
 
