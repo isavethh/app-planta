@@ -2,10 +2,10 @@ import { io } from 'socket.io-client';
 import { Platform } from 'react-native';
 
 // URL del servidor WebSocket con namespace /tracking
-// El servidor Node.js corre en puerto 3001
+// Servidor en producción
 const SOCKET_URL = Platform.OS === 'web' 
-  ? 'http://localhost:3001/tracking'
-  : 'http://10.26.10.192:3001/tracking';
+  ? 'http://bomberos.dasalas.shop/tracking'
+  : 'http://bomberos.dasalas.shop/tracking';
 
 class SocketService {
   constructor() {

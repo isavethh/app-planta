@@ -138,7 +138,7 @@ export default function QRViewScreen({ route, navigation }) {
 
   const verDocumentoCompleto = () => {
     // URL del documento completo generado por Laravel
-    const documentoUrl = `http://10.26.10.192:8001/api/envios/${envioId}/documento`;
+    const documentoUrl = `http://orgtrack2.dasalas.shop/api/envios/${envioId}/documento`;
     
     Linking.openURL(documentoUrl).catch(err => {
       Alert.alert('Error', 'No se pudo abrir el documento.\n\nAsegúrate que el backend esté corriendo.');

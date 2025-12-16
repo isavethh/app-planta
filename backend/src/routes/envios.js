@@ -5,17 +5,16 @@ const documentoController = require('../controllers/documentoController');
 const notaVentaController = require('../controllers/notaVentaController');
 const { authenticateToken } = require('../middlewares/auth');
 
+// ==================== RUTAS ESPECÍFICAS (ANTES DE /:id) ====================
+// IMPORTANTE: Las rutas específicas deben ir ANTES de las rutas con parámetros dinámicos
+
 // Rutas sin autenticación (para app simplificada)
 router.get('/', enviosController.getAll); // Permitir ver envíos sin auth (filtrar por usuario_id en query)
+
+// Rutas específicas que deben ir antes de /:id
+router.get('/estados', enviosController.getEstados); // Obtener estados disponibles
 router.get('/codigo/:codigo', enviosController.getByCode);
 router.get('/transportista/:transportistaId', enviosController.getByTransportista); // Envíos del transportista
-router.get('/:id/documento', documentoController.generarDocumentoHTML); // Documento HTML completo (ANTES de /:id)
-router.get('/:id/nota-venta', notaVentaController.generarNotaVentaHTML); // Nota de venta HTML
-router.get('/:id', enviosController.getById);
-
-// Acciones del transportista (aceptar/rechazar asignación)
-router.post('/:id/aceptar', enviosController.aceptarAsignacion);
-router.post('/:id/rechazar', enviosController.rechazarAsignacion);
 
 // Sincronización desde Laravel (sin autenticación)
 router.post('/sync', async (req, res) => {
@@ -86,12 +85,22 @@ router.post('/sync', async (req, res) => {
   }
 });
 
-// Rutas con autenticación (las que modifican datos)
-router.get('/estados', enviosController.getEstados);
+// ==================== RUTAS CON PARÁMETROS DINÁMICOS (DESPUÉS DE RUTAS ESPECÍFICAS) ====================
+
+// Rutas con sub-rutas específicas (deben ir antes de /:id)
+router.get('/:id/documento', documentoController.generarDocumentoHTML); // Documento HTML completo
+router.get('/:id/nota-venta', notaVentaController.generarNotaVentaHTML); // Nota de venta HTML
 router.get('/:id/seguimiento', enviosController.getSeguimiento);
 router.put('/:id/estado', enviosController.updateEstado);
 router.post('/:id/iniciar', enviosController.iniciarEnvio);
 router.post('/:id/entregar', enviosController.marcarEntregado);
 router.post('/:id/simular-movimiento', enviosController.simularMovimiento);
+
+// Acciones del transportista (aceptar/rechazar asignación)
+router.post('/:id/aceptar', enviosController.aceptarAsignacion);
+router.post('/:id/rechazar', enviosController.rechazarAsignacion);
+
+// Ruta genérica por ID (DEBE IR AL FINAL)
+router.get('/:id', enviosController.getById);
 
 module.exports = router;

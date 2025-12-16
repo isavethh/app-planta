@@ -2,11 +2,10 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// URL del backend - CONECTADO A LARAVEL (puerto 8001)
-// IP de WiFi: 10.26.10.192
+// URL del backend (Laravel) - Servidor en producción
 export const API_URL = Platform.OS === 'web' 
-  ? 'http://localhost:8001/api'  // Para web
-  : 'http://10.26.10.192:8001/api'; // ✅ IP WiFi actual
+  ? 'http://orgtrack2.dasalas.shop/api'  // Para web
+  : 'http://orgtrack2.dasalas.shop/api'; // ✅ Servidor Laravel en producción
 
 console.log('🌐 [API] URL configurada:', API_URL);
 
