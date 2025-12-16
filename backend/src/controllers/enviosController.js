@@ -195,6 +195,7 @@ const simularMovimiento = async (req, res) => {
     const { id } = req.params;
 
     // Obtener envío con coordenadas de origen (planta) y destino (almacén)
+    // Verificar si tiene ruta_entrega_id (multi-envío)
     const envioResult = await pool.query(`
       SELECT e.*,
              -17.7833 AS origen_lat,
@@ -212,15 +213,141 @@ const simularMovimiento = async (req, res) => {
 
     const envio = envioResult.rows[0];
 
-    // Valores por defecto (Santa Cruz) si faltan coordenadas
-    const origen_lat = parseFloat(envio.origen_lat) || -17.7833;
-    const origen_lng = parseFloat(envio.origen_lng) || -63.1821;
-    const destino_lat = parseFloat(envio.destino_lat) || -17.7892;
-    const destino_lng = parseFloat(envio.destino_lng) || -63.1751;
+    let puntos = [];
+    let origen_lat, origen_lng;
+    let destino_lat, destino_lng;
 
-    console.log(`🗺️ Obteniendo ruta real para envío ${id}...`);
-    console.log(`   Origen: ${origen_lat}, ${origen_lng}`);
-    console.log(`   Destino: ${destino_lat}, ${destino_lng}`);
+    // Si el envío tiene ruta_entrega_id, es un multi-envío - obtener todas las paradas
+    if (envio.ruta_entrega_id) {
+      console.log(`🛣️ Envío ${id} es parte de ruta multi-entrega ${envio.ruta_entrega_id}`);
+      
+      // Obtener todas las paradas de la ruta ordenadas por orden
+      const paradasResult = await pool.query(`
+        SELECT rp.orden, rp.latitud, rp.longitud, a.nombre as almacen_nombre
+        FROM ruta_paradas rp
+        LEFT JOIN envios e2 ON rp.envio_id = e2.id
+        LEFT JOIN almacenes a ON e2.almacen_destino_id = a.id OR rp.latitud IS NOT NULL
+        WHERE rp.ruta_entrega_id = $1 AND rp.orden > 0
+        ORDER BY rp.orden ASC
+      `, [envio.ruta_entrega_id]);
+
+      // Obtener coordenadas de la planta (origen)
+      const plantaResult = await pool.query(`
+        SELECT latitud, longitud FROM almacenes WHERE es_planta = true LIMIT 1
+      `);
+      const planta = plantaResult.rows[0] || { latitud: -17.7833, longitud: -63.1821 };
+      
+      origen_lat = parseFloat(planta.latitud) || -17.7833;
+      origen_lng = parseFloat(planta.longitud) || -63.1821;
+
+      // Construir secuencia de puntos: Planta -> Parada1 -> Parada2 -> Parada3 -> ...
+      const puntosRuta = [
+        { lat: origen_lat, lng: origen_lng, nombre: 'Planta Principal' }
+      ];
+
+      // Agregar cada parada
+      for (const parada of paradasResult.rows) {
+        const lat = parseFloat(parada.latitud);
+        const lng = parseFloat(parada.longitud);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          puntosRuta.push({
+            lat,
+            lng,
+            nombre: parada.almacen_nombre || `Parada ${parada.orden}`
+          });
+        }
+      }
+
+      // Si no hay paradas válidas, usar el destino del envío individual
+      if (puntosRuta.length === 1) {
+        destino_lat = parseFloat(envio.destino_lat) || -17.7892;
+        destino_lng = parseFloat(envio.destino_lng) || -63.1751;
+        puntosRuta.push({ lat: destino_lat, lng: destino_lng, nombre: 'Destino' });
+      } else {
+        destino_lat = puntosRuta[puntosRuta.length - 1].lat;
+        destino_lng = puntosRuta[puntosRuta.length - 1].lng;
+      }
+
+      console.log(`🗺️ Ruta multi-entrega con ${puntosRuta.length} puntos (Planta + ${puntosRuta.length - 1} paradas)`);
+
+      // Obtener ruta completa usando OSRM con waypoints
+      try {
+        const fetch = require('node-fetch');
+        // Construir URL OSRM con múltiples waypoints: origen;parada1;parada2;parada3;...
+        const waypoints = puntosRuta.map(p => `${p.lng},${p.lat}`).join(';');
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=full&geometries=geojson`;
+        
+        console.log(`🌐 Consultando OSRM para ruta multi-entrega: ${waypoints.substring(0, 100)}...`);
+        const response = await fetch(osrmUrl, { timeout: 15000 });
+        const data = await response.json();
+
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          const coordinates = data.routes[0].geometry.coordinates;
+          console.log(`✅ OSRM devolvió ${coordinates.length} puntos para ruta multi-entrega`);
+
+          // Reducir puntos si son demasiados (para animación más suave)
+          const maxPuntos = 150; // Más puntos para rutas largas
+          const step = Math.max(1, Math.floor(coordinates.length / maxPuntos));
+          
+          for (let i = 0; i < coordinates.length; i += step) {
+            const coord = coordinates[i];
+            puntos.push({
+              latitud: coord[1],
+              longitud: coord[0],
+              velocidad: (30 + Math.random() * 20).toFixed(2)
+            });
+          }
+          
+          // Asegurar que el último punto sea el destino exacto
+          const lastCoord = coordinates[coordinates.length - 1];
+          if (puntos.length > 0) {
+            puntos[puntos.length - 1] = {
+              latitud: lastCoord[1],
+              longitud: lastCoord[0],
+              velocidad: '0.00'
+            };
+          }
+
+          console.log(`📍 Ruta multi-entrega optimizada a ${puntos.length} puntos`);
+        } else {
+          console.warn('⚠️ OSRM no devolvió ruta válida para multi-entrega, usando interpolación');
+        }
+      } catch (osrmError) {
+        console.warn('⚠️ Error consultando OSRM para multi-entrega:', osrmError.message);
+      }
+
+      // Fallback: Interpolación secuencial entre puntos
+      if (puntos.length === 0) {
+        console.log('📍 Usando interpolación secuencial para ruta multi-entrega');
+        for (let i = 0; i < puntosRuta.length - 1; i++) {
+          const desde = puntosRuta[i];
+          const hasta = puntosRuta[i + 1];
+          const pasos = 20;
+          
+          for (let j = 0; j <= pasos; j++) {
+            const ratio = j / pasos;
+            puntos.push({
+              latitud: desde.lat + (hasta.lat - desde.lat) * ratio,
+              longitud: desde.lng + (hasta.lng - desde.lng) * ratio,
+              velocidad: (30 + Math.random() * 20).toFixed(2)
+            });
+          }
+        }
+        // Último punto con velocidad 0
+        if (puntos.length > 0) {
+          puntos[puntos.length - 1].velocidad = '0.00';
+        }
+      }
+    } else {
+      // Envío individual - lógica original
+      origen_lat = parseFloat(envio.origen_lat) || -17.7833;
+      origen_lng = parseFloat(envio.origen_lng) || -63.1821;
+      destino_lat = parseFloat(envio.destino_lat) || -17.7892;
+      destino_lng = parseFloat(envio.destino_lng) || -63.1751;
+
+      console.log(`🗺️ Obteniendo ruta para envío individual ${id}...`);
+      console.log(`   Origen: ${origen_lat}, ${origen_lng}`);
+      console.log(`   Destino: ${destino_lat}, ${destino_lng}`);
 
     // Actualizar estado a en_transito si aún no lo está
     await pool.query(
@@ -235,65 +362,192 @@ const simularMovimiento = async (req, res) => {
       console.warn('No se pudo limpiar seguimiento previo:', err.message);
     }
 
-    // Obtener ruta real usando OSRM (Open Source Routing Machine) - API gratuita
+    // Obtener ruta real usando OSRM - soporte para multi-envíos
     let puntos = [];
-    try {
-      const fetch = require('node-fetch');
-      // OSRM espera coordenadas en formato lng,lat (inverso a lo normal)
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origen_lng},${origen_lat};${destino_lng},${destino_lat}?overview=full&geometries=geojson`;
+
+    // Si el envío tiene ruta_entrega_id, es un multi-envío - obtener todas las paradas
+    if (envio.ruta_entrega_id) {
+      console.log(`🛣️ Envío ${id} es parte de ruta multi-entrega ${envio.ruta_entrega_id}`);
       
-      console.log(`🌐 Consultando OSRM: ${osrmUrl}`);
-      const response = await fetch(osrmUrl, { timeout: 10000 });
-      const data = await response.json();
+      // Obtener todas las paradas de la ruta ordenadas por orden
+      const paradasResult = await pool.query(`
+        SELECT rp.orden, rp.latitud, rp.longitud, a.nombre as almacen_nombre
+        FROM ruta_paradas rp
+        LEFT JOIN envios e2 ON rp.envio_id = e2.id
+        LEFT JOIN almacenes a ON e2.almacen_destino_id = a.id OR rp.latitud IS NOT NULL
+        WHERE rp.ruta_entrega_id = $1 AND rp.orden > 0
+        ORDER BY rp.orden ASC
+      `, [envio.ruta_entrega_id]);
 
-      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-        const coordinates = data.routes[0].geometry.coordinates;
-        console.log(`✅ OSRM devolvió ${coordinates.length} puntos de ruta`);
+      // Obtener coordenadas de la planta (origen)
+      const plantaResult = await pool.query(`
+        SELECT latitud, longitud FROM almacenes WHERE es_planta = true LIMIT 1
+      `);
+      const planta = plantaResult.rows[0] || { latitud: -17.7833, longitud: -63.1821 };
+      
+      const plantaLat = parseFloat(planta.latitud) || -17.7833;
+      const plantaLng = parseFloat(planta.longitud) || -63.1821;
 
-        // Reducir puntos si son demasiados (para animación más suave)
-        // Tomamos máximo 50 puntos distribuidos uniformemente
-        const maxPuntos = 50;
-        const step = Math.max(1, Math.floor(coordinates.length / maxPuntos));
+      // Construir secuencia de puntos: Planta -> Parada1 -> Parada2 -> Parada3 -> ...
+      const puntosRuta = [
+        { lat: plantaLat, lng: plantaLng, nombre: 'Planta Principal' }
+      ];
+
+      // Agregar cada parada
+      for (const parada of paradasResult.rows) {
+        const lat = parseFloat(parada.latitud);
+        const lng = parseFloat(parada.longitud);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          puntosRuta.push({
+            lat,
+            lng,
+            nombre: parada.almacen_nombre || `Parada ${parada.orden}`
+          });
+        }
+      }
+
+      // Si no hay paradas válidas, usar el destino del envío individual
+      if (puntosRuta.length === 1) {
+        destino_lat = parseFloat(envio.destino_lat) || -17.7892;
+        destino_lng = parseFloat(envio.destino_lng) || -63.1751;
+        puntosRuta.push({ lat: destino_lat, lng: destino_lng, nombre: 'Destino' });
+      } else {
+        destino_lat = puntosRuta[puntosRuta.length - 1].lat;
+        destino_lng = puntosRuta[puntosRuta.length - 1].lng;
+      }
+
+      origen_lat = puntosRuta[0].lat;
+      origen_lng = puntosRuta[0].lng;
+
+      console.log(`🗺️ Ruta multi-entrega con ${puntosRuta.length} puntos (Planta + ${puntosRuta.length - 1} paradas)`);
+
+      // Obtener ruta completa usando OSRM con waypoints
+      try {
+        const fetch = require('node-fetch');
+        // Construir URL OSRM con múltiples waypoints: origen;parada1;parada2;parada3;...
+        const waypoints = puntosRuta.map(p => `${p.lng},${p.lat}`).join(';');
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=full&geometries=geojson`;
         
-        for (let i = 0; i < coordinates.length; i += step) {
-          const coord = coordinates[i];
-          // OSRM devuelve [lng, lat], convertimos a lat, lng
+        console.log(`🌐 Consultando OSRM para ruta multi-entrega con ${puntosRuta.length} waypoints`);
+        const response = await fetch(osrmUrl, { timeout: 15000 });
+        const data = await response.json();
+
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          const coordinates = data.routes[0].geometry.coordinates;
+          console.log(`✅ OSRM devolvió ${coordinates.length} puntos para ruta multi-entrega`);
+
+          // Reducir puntos si son demasiados (para animación más suave)
+          const maxPuntos = 150; // Más puntos para rutas largas
+          const step = Math.max(1, Math.floor(coordinates.length / maxPuntos));
+          
+          for (let i = 0; i < coordinates.length; i += step) {
+            const coord = coordinates[i];
+            puntos.push({
+              latitud: coord[1],
+              longitud: coord[0],
+              velocidad: (30 + Math.random() * 20).toFixed(2)
+            });
+          }
+          
+          // Asegurar que el último punto sea el destino exacto
+          const lastCoord = coordinates[coordinates.length - 1];
+          if (puntos.length > 0) {
+            puntos[puntos.length - 1] = {
+              latitud: lastCoord[1],
+              longitud: lastCoord[0],
+              velocidad: '0.00'
+            };
+          }
+
+          console.log(`📍 Ruta multi-entrega optimizada a ${puntos.length} puntos`);
+        } else {
+          console.warn('⚠️ OSRM no devolvió ruta válida para multi-entrega, usando interpolación');
+        }
+      } catch (osrmError) {
+        console.warn('⚠️ Error consultando OSRM para multi-entrega:', osrmError.message);
+      }
+
+      // Fallback: Interpolación secuencial entre puntos
+      if (puntos.length === 0) {
+        console.log('📍 Usando interpolación secuencial para ruta multi-entrega');
+        for (let i = 0; i < puntosRuta.length - 1; i++) {
+          const desde = puntosRuta[i];
+          const hasta = puntosRuta[i + 1];
+          const pasos = 20;
+          
+          for (let j = 0; j <= pasos; j++) {
+            const ratio = j / pasos;
+            puntos.push({
+              latitud: desde.lat + (hasta.lat - desde.lat) * ratio,
+              longitud: desde.lng + (hasta.lng - desde.lng) * ratio,
+              velocidad: (30 + Math.random() * 20).toFixed(2)
+            });
+          }
+        }
+        // Último punto con velocidad 0
+        if (puntos.length > 0) {
+          puntos[puntos.length - 1].velocidad = '0.00';
+        }
+      }
+    } else {
+      // Envío individual - lógica original
+      try {
+        const fetch = require('node-fetch');
+        // OSRM espera coordenadas en formato lng,lat (inverso a lo normal)
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origen_lng},${origen_lat};${destino_lng},${destino_lat}?overview=full&geometries=geojson`;
+        
+        console.log(`🌐 Consultando OSRM: ${osrmUrl}`);
+        const response = await fetch(osrmUrl, { timeout: 10000 });
+        const data = await response.json();
+
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          const coordinates = data.routes[0].geometry.coordinates;
+          console.log(`✅ OSRM devolvió ${coordinates.length} puntos de ruta`);
+
+          // Reducir puntos si son demasiados (para animación más suave)
+          const maxPuntos = 50;
+          const step = Math.max(1, Math.floor(coordinates.length / maxPuntos));
+          
+          for (let i = 0; i < coordinates.length; i += step) {
+            const coord = coordinates[i];
+            // OSRM devuelve [lng, lat], convertimos a lat, lng
+            puntos.push({
+              latitud: coord[1],
+              longitud: coord[0],
+              velocidad: (30 + Math.random() * 20).toFixed(2)
+            });
+          }
+          
+          // Asegurar que el último punto sea el destino exacto
+          const lastCoord = coordinates[coordinates.length - 1];
+          if (puntos.length > 0) {
+            puntos[puntos.length - 1] = {
+              latitud: lastCoord[1],
+              longitud: lastCoord[0],
+              velocidad: '0.00'
+            };
+          }
+
+          console.log(`📍 Ruta optimizada a ${puntos.length} puntos`);
+        } else {
+          console.warn('⚠️ OSRM no devolvió ruta válida, usando interpolación');
+        }
+      } catch (osrmError) {
+        console.warn('⚠️ Error consultando OSRM:', osrmError.message);
+      }
+
+      // Fallback: Si OSRM falla, crear ruta interpolada
+      if (puntos.length === 0) {
+        console.log('📍 Usando ruta interpolada como fallback');
+        const pasos = 20;
+        for (let i = 0; i <= pasos; i++) {
+          const ratio = i / pasos;
           puntos.push({
-            latitud: coord[1],
-            longitud: coord[0],
+            latitud: origen_lat + (destino_lat - origen_lat) * ratio,
+            longitud: origen_lng + (destino_lng - origen_lng) * ratio,
             velocidad: (30 + Math.random() * 20).toFixed(2)
           });
         }
-        
-        // Asegurar que el último punto sea el destino exacto
-        const lastCoord = coordinates[coordinates.length - 1];
-        if (puntos.length > 0) {
-          puntos[puntos.length - 1] = {
-            latitud: lastCoord[1],
-            longitud: lastCoord[0],
-            velocidad: '0.00'
-          };
-        }
-
-        console.log(`📍 Ruta optimizada a ${puntos.length} puntos`);
-      } else {
-        console.warn('⚠️ OSRM no devolvió ruta válida, usando interpolación');
-      }
-    } catch (osrmError) {
-      console.warn('⚠️ Error consultando OSRM:', osrmError.message);
-    }
-
-    // Fallback: Si OSRM falla, crear ruta interpolada
-    if (puntos.length === 0) {
-      console.log('📍 Usando ruta interpolada como fallback');
-      const pasos = 20;
-      for (let i = 0; i <= pasos; i++) {
-        const ratio = i / pasos;
-        puntos.push({
-          latitud: origen_lat + (destino_lat - origen_lat) * ratio,
-          longitud: origen_lng + (destino_lng - origen_lng) * ratio,
-          velocidad: (30 + Math.random() * 20).toFixed(2)
-        });
       }
     }
 
@@ -314,10 +568,11 @@ const simularMovimiento = async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Ruta real obtenida correctamente',
+      message: 'Ruta obtenida correctamente',
       puntos,
       puntosGuardados,
-      rutaReal: puntos.length > 20, // Indica si es ruta real o interpolada
+      rutaReal: puntos.length > 20,
+      esMultiEntrega: !!envio.ruta_entrega_id,
       origen: { lat: origen_lat, lng: origen_lng },
       destino: { lat: destino_lat, lng: destino_lng }
     });
