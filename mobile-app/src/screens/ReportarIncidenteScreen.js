@@ -3,9 +3,7 @@ import { View, StyleSheet, ScrollView, Image, Alert, TouchableOpacity } from 're
 import { Text, Card, TextInput, Button, RadioButton, ActivityIndicator } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
-import axios from 'axios';
-
-const API_URL = 'http://orgtrack2.dasalas.shop/api';
+import { envioService } from '../services/api';
 
 const TIPOS_INCIDENTE = [
   { value: 'producto_danado', label: 'Producto dañado', icon: 'package-variant-closed-remove' },
@@ -21,7 +19,8 @@ export default function ReportarIncidenteScreen({ route, navigation }) {
   
   const [tipoIncidente, setTipoIncidente] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [foto, setFoto] = useState(null);
+  const [foto, setFoto] = useState(null); // URI para mostrar preview
+  const [fotoBase64, setFotoBase64] = useState(null); // Base64 para enviar al servidor
   const [loading, setLoading] = useState(false);
 
   const solicitarPermisos = async () => {
@@ -42,11 +41,18 @@ export default function ReportarIncidenteScreen({ route, navigation }) {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.7,
+        quality: 0.8,
+        base64: true, // Habilitar base64
       });
 
       if (!result.canceled && result.assets[0]) {
-        setFoto(result.assets[0].uri);
+        setFoto(result.assets[0].uri); // URI para preview
+        // Guardar base64 para enviar al servidor
+        if (result.assets[0].base64) {
+          setFotoBase64(result.assets[0].base64);
+        } else {
+          console.warn('⚠️ No se obtuvo base64 de la imagen');
+        }
       }
     } catch (error) {
       console.error('Error al tomar foto:', error);
@@ -66,11 +72,18 @@ export default function ReportarIncidenteScreen({ route, navigation }) {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.7,
+        quality: 0.8,
+        base64: true, // Habilitar base64
       });
 
       if (!result.canceled && result.assets[0]) {
-        setFoto(result.assets[0].uri);
+        setFoto(result.assets[0].uri); // URI para preview
+        // Guardar base64 para enviar al servidor
+        if (result.assets[0].base64) {
+          setFotoBase64(result.assets[0].base64);
+        } else {
+          console.warn('⚠️ No se obtuvo base64 de la imagen');
+        }
       }
     } catch (error) {
       console.error('Error al seleccionar imagen:', error);
@@ -92,42 +105,38 @@ export default function ReportarIncidenteScreen({ route, navigation }) {
     setLoading(true);
 
     try {
-      // Crear FormData para enviar la imagen
-      const formData = new FormData();
-      formData.append('envio_id', envioId);
-      formData.append('tipo_incidente', tipoIncidente);
-      formData.append('descripcion', descripcion);
-      
-      if (foto) {
-        const filename = foto.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-        
-        formData.append('foto', {
-          uri: foto,
-          name: filename,
-          type,
-        });
-      }
+      // Preparar datos para enviar (igual que TrackingScreen)
+      const datos = {
+        tipo_incidente: tipoIncidente,
+        descripcion: descripcion,
+        accion: 'continuar', // Por defecto continuar, podría agregar opción para cancelar
+        foto_base64: null, // Imágenes deshabilitadas
+      };
 
-      const response = await axios.post(`${API_URL}/incidentes`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      console.log('📤 [ReportarIncidenteScreen] Enviando incidente:', {
+        envioId,
+        tipo_incidente: tipoIncidente,
+        tiene_foto: !!fotoBase64,
+        foto_length: fotoBase64 ? fotoBase64.length : 0,
       });
 
-      if (response.data.success) {
+      const resultado = await envioService.reportarIncidente(envioId, datos);
+
+      if (resultado?.success) {
         Alert.alert(
           '✅ Reporte Enviado',
           'Tu incidente ha sido registrado. Nos pondremos en contacto contigo pronto.',
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       } else {
-        throw new Error(response.data.error || 'Error al enviar');
+        throw new Error(resultado?.error || resultado?.message || 'Error al enviar');
       }
     } catch (error) {
-      console.error('Error al enviar reporte:', error);
-      Alert.alert('Error', 'No se pudo enviar el reporte. Intenta de nuevo.');
+      console.error('❌ [ReportarIncidenteScreen] Error al enviar reporte:', error);
+      Alert.alert(
+        'Error', 
+        `No se pudo enviar el reporte.\n\n${error.message || 'Error desconocido'}`
+      );
     } finally {
       setLoading(false);
     }
@@ -198,53 +207,6 @@ export default function ReportarIncidenteScreen({ route, navigation }) {
         </Card.Content>
       </Card>
 
-      {/* Foto de Evidencia */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <Text style={styles.sectionTitle}>¿Tienes una foto como evidencia?</Text>
-          <Text style={styles.sectionSubtitle}>Una foto nos ayuda a resolver el problema más rápido</Text>
-          
-          {foto ? (
-            <View style={styles.fotoContainer}>
-              <Image source={{ uri: foto }} style={styles.fotoPreview} />
-              <View style={styles.fotoActions}>
-                <Button 
-                  mode="outlined" 
-                  onPress={() => setFoto(null)}
-                  icon="close"
-                  textColor="#F44336"
-                  style={styles.fotoButton}
-                >
-                  Quitar
-                </Button>
-                <Button 
-                  mode="outlined" 
-                  onPress={tomarFoto}
-                  icon="camera"
-                  style={styles.fotoButton}
-                >
-                  Cambiar
-                </Button>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.fotoPlaceholder}>
-              <View style={styles.fotoButtonsRow}>
-                <TouchableOpacity style={styles.fotoOptionButton} onPress={tomarFoto}>
-                  <Icon name="camera" size={40} color="#4CAF50" />
-                  <Text style={styles.fotoOptionText}>Tomar Foto</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.fotoOptionButton} onPress={seleccionarDeGaleria}>
-                  <Icon name="image" size={40} color="#2196F3" />
-                  <Text style={styles.fotoOptionText}>Galería</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.fotoOptional}>(Opcional pero recomendado)</Text>
-            </View>
-          )}
-        </Card.Content>
-      </Card>
 
       {/* Botón Enviar */}
       <View style={styles.submitContainer}>

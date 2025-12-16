@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Image } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Image, StatusBar, Platform, ActivityIndicator } from 'react-native';
 import { Card, Text, Chip, Searchbar, Button } from 'react-native-paper';
 import { AuthContext } from '../context/AuthContext';
 import { incidenteService } from '../services/api';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0;
 
 export default function MisIncidentesScreen({ navigation }) {
   console.log('⚠️ [MisIncidentesScreen] Componente iniciando...');
@@ -62,9 +64,14 @@ export default function MisIncidentesScreen({ navigation }) {
       
       // Obtener incidentes filtrados por transportista
       const response = await incidenteService.listar({ transportista_id: userInfo.id });
-      const data = Array.isArray(response) ? response : (response?.data || []);
+      
+      // El servicio ya devuelve response.data, que es un array
+      const data = Array.isArray(response) ? response : [];
       
       console.log('[MisIncidentesScreen] Respuesta recibida:', data.length, 'incidentes');
+      if (data.length > 0) {
+        console.log('[MisIncidentesScreen] Primer incidente:', JSON.stringify(data[0], null, 2));
+      }
       
       // Ordenar por fecha más reciente primero
       const incidentesOrdenados = data.sort((a, b) => {
@@ -181,19 +188,9 @@ export default function MisIncidentesScreen({ navigation }) {
           </View>
 
           {item.descripcion && (
-            <Text style={styles.descripcion} numberOfLines={3}>
+            <Text style={styles.descripcion} numberOfLines={5}>
               {item.descripcion}
             </Text>
-          )}
-
-          {item.foto_url && (
-            <View style={styles.fotoContainer}>
-              <Image 
-                source={{ uri: item.foto_url }} 
-                style={styles.foto}
-                resizeMode="cover"
-              />
-            </View>
           )}
 
           <View style={styles.infoRow}>
@@ -235,7 +232,8 @@ export default function MisIncidentesScreen({ navigation }) {
 
         {loading && !refreshing ? (
           <View style={styles.centerContainer}>
-            <Text>Cargando incidentes...</Text>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingText}>Cargando incidentes...</Text>
           </View>
         ) : incidentesFiltrados.length === 0 ? (
           <View style={styles.centerContainer}>
@@ -272,6 +270,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+    paddingTop: STATUSBAR_HEIGHT,
   },
   content: {
     flex: 1,
@@ -369,6 +368,11 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 16,
   },
 });
 

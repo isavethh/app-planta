@@ -896,7 +896,7 @@ export default function TrackingScreen({ route, navigation }) {
         tipo_incidente: tipoIncidente,
         descripcion: descripcionIncidente,
         accion: accionIncidente,
-        foto_base64: fotoIncidente,
+        foto_base64: null, // Imágenes deshabilitadas
         ubicacion_lat: ubicacionLat,
         ubicacion_lng: ubicacionLng,
       };
@@ -1530,36 +1530,6 @@ export default function TrackingScreen({ route, navigation }) {
                   style={styles.incidenteInput}
                 />
 
-                {/* Foto (Opcional) */}
-                <View style={styles.incidenteFotoSection}>
-                  <Text variant="titleSmall" style={styles.incidenteFotoTitle}>
-                    Foto del Incidente (Opcional)
-                  </Text>
-                  {fotoIncidente ? (
-                    <View style={styles.incidenteFotoPreview}>
-                      <Text variant="bodySmall" style={styles.incidenteFotoTexto}>
-                        ✓ Foto capturada
-                      </Text>
-                      <Button
-                        mode="text"
-                        icon="camera"
-                        onPress={tomarFotoIncidente}
-                        style={styles.incidenteFotoCambiarBtn}
-                      >
-                        Cambiar Foto
-                      </Button>
-                    </View>
-                  ) : (
-                    <Button
-                      mode="outlined"
-                      icon="camera"
-                      onPress={tomarFotoIncidente}
-                      style={styles.incidenteFotoBtn}
-                    >
-                      Tomar Foto
-                    </Button>
-                  )}
-                </View>
 
                 {/* Acción */}
                 <View style={styles.incidenteAccionSection}>
