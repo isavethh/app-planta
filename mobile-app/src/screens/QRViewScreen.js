@@ -370,23 +370,33 @@ export default function QRViewScreen({ route, navigation }) {
               left={(props) => <Icon name="package-variant-closed" {...props} size={24} color="#4CAF50" />}
             />
             <Card.Content>
-              <DataTable>
-                <DataTable.Header>
-                  <DataTable.Title>Producto</DataTable.Title>
-                  <DataTable.Title numeric>Cant.</DataTable.Title>
-                  <DataTable.Title numeric>Peso</DataTable.Title>
-                  <DataTable.Title numeric>Precio</DataTable.Title>
-                </DataTable.Header>
+              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <DataTable style={styles.dataTable}>
+                  <DataTable.Header>
+                    <DataTable.Title style={styles.tableCellProducto}>Producto</DataTable.Title>
+                    <DataTable.Title numeric style={styles.tableCellNumeric}>Cant.</DataTable.Title>
+                    <DataTable.Title numeric style={styles.tableCellNumeric}>Peso (kg)</DataTable.Title>
+                    <DataTable.Title numeric style={styles.tableCellNumeric}>Precio Unit.</DataTable.Title>
+                  </DataTable.Header>
 
-                {envio.productos.map((producto, index) => (
-                  <DataTable.Row key={index}>
-                    <DataTable.Cell>{producto.producto_nombre || 'Producto'}</DataTable.Cell>
-                    <DataTable.Cell numeric>{producto.cantidad}</DataTable.Cell>
-                    <DataTable.Cell numeric>{parseFloat(producto.total_peso || producto.peso_unitario || 0).toFixed(2)}kg</DataTable.Cell>
-                    <DataTable.Cell numeric>${parseFloat(producto.total_precio || producto.precio_unitario || 0).toFixed(2)}</DataTable.Cell>
-                  </DataTable.Row>
-                ))}
-              </DataTable>
+                  {envio.productos.map((producto, index) => (
+                    <DataTable.Row key={index}>
+                      <DataTable.Cell style={styles.tableCellProducto} textStyle={styles.tableCellText}>
+                        {producto.producto_nombre || 'Producto'}
+                      </DataTable.Cell>
+                      <DataTable.Cell numeric style={styles.tableCellNumeric} textStyle={styles.tableCellText}>
+                        {producto.cantidad}
+                      </DataTable.Cell>
+                      <DataTable.Cell numeric style={styles.tableCellNumeric} textStyle={styles.tableCellText}>
+                        {parseFloat(producto.total_peso || producto.peso_unitario || 0).toFixed(2)}
+                      </DataTable.Cell>
+                      <DataTable.Cell numeric style={styles.tableCellNumeric} textStyle={styles.tableCellText}>
+                        Bs {parseFloat(producto.total_precio || producto.precio_unitario || 0).toFixed(2)}
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ))}
+                </DataTable>
+              </ScrollView>
 
               <Divider style={styles.totalDivider} />
               
@@ -861,5 +871,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     paddingVertical: 10,
+  },
+  dataTable: {
+    minWidth: 400, // Ancho mínimo para que la tabla no se comprima demasiado
+  },
+  tableCellProducto: {
+    flex: 2, // Más espacio para el nombre del producto
+    maxWidth: 200, // Ancho máximo para evitar que se salga
+  },
+  tableCellNumeric: {
+    flex: 1,
+    minWidth: 80, // Ancho mínimo para columnas numéricas
+  },
+  tableCellText: {
+    fontSize: 12, // Tamaño de fuente más pequeño para que quepa
   },
 });
