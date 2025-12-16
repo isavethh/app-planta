@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Image } from 'react-native';
-import { Card, Text, Button, Chip, Divider, Surface, Dialog, Portal, ActivityIndicator } from 'react-native-paper';
+import { Card, Text, Button, Chip, Divider, Surface, Dialog, Portal, ActivityIndicator, Modal } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import SignatureCanvas from 'react-native-signature-canvas';
 import { envioService } from '../services/api';
 
 export default function EnvioDetalleScreen({ route, navigation }) {
@@ -11,6 +12,9 @@ export default function EnvioDetalleScreen({ route, navigation }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
   const [accionPendiente, setAccionPendiente] = useState(null);
+  const [firma, setFirma] = useState(null);
+  const [mostrarFirma, setMostrarFirma] = useState(false);
+  const signatureRef = useRef(null);
 
   useEffect(() => {
     cargarEnvio();
@@ -62,9 +66,37 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     }
   };
 
+  // Manejar firma
+  const handleOK = (signature) => {
+    setFirma(signature);
+    setMostrarFirma(false);
+    console.log('[EnvioDetalle] Firma capturada');
+    // Después de capturar la firma, proceder con la aceptación
+    if (accionPendiente === 'aceptar') {
+      ejecutarAccion();
+    }
+  };
+
+  const handleClear = () => {
+    signatureRef.current?.clearSignature();
+  };
+
+  const handleConfirm = () => {
+    signatureRef.current?.readSignature();
+  };
+
+  const handleEmpty = () => {
+    Alert.alert('Firma requerida', 'Por favor, firma antes de aceptar el envío');
+  };
+
   const confirmarAccion = (accion) => {
     setAccionPendiente(accion);
-    setDialogVisible(true);
+    if (accion === 'aceptar') {
+      // Mostrar modal de firma antes de aceptar
+      setMostrarFirma(true);
+    } else {
+      setDialogVisible(true);
+    }
   };
 
   const ejecutarAccion = async () => {
@@ -74,10 +106,11 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     try {
       if (accionPendiente === 'aceptar') {
         // Aceptar envío y generar nota de venta automáticamente
-        console.log('[EnvioDetalle] Aceptando envío y generando nota de venta...');
+        console.log('[EnvioDetalle] Aceptando envío con firma...');
         const result = await envioService.aceptarAsignacion(envioId, {
           nombre: 'Transportista', // TODO: obtener de userInfo
-          email: 'transportista@example.com' // TODO: obtener de userInfo
+          email: 'transportista@example.com', // TODO: obtener de userInfo
+          firma_base64: firma // Enviar la firma capturada
         });
         
         console.log('[EnvioDetalle] Envío aceptado:', result);
@@ -86,6 +119,7 @@ export default function EnvioDetalleScreen({ route, navigation }) {
           '✅ Envío Aceptado', 
           'Has aceptado el envío exitosamente. Tu firma digital ha sido registrada y se generó una nota de venta automáticamente.',
           [{ text: 'OK', onPress: () => {
+            setFirma(null); // Limpiar firma
             cargarEnvio();
             navigation.goBack();
           }}]
@@ -370,6 +404,70 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         <View style={{ height: 200 }} />
       </ScrollView>
 
+      {/* Modal de Firma */}
+      <Portal>
+        <Modal
+          visible={mostrarFirma}
+          onDismiss={() => {
+            setMostrarFirma(false);
+            setAccionPendiente(null);
+          }}
+          contentContainerStyle={styles.modalFirma}
+        >
+          <View style={styles.modalFirmaContent}>
+            <Text variant="titleLarge" style={styles.modalFirmaTitle}>
+              Firma Digital
+            </Text>
+            <Text variant="bodyMedium" style={styles.modalFirmaSubtitle}>
+              Por favor, firma para aceptar el envío
+            </Text>
+            <View style={styles.signatureContainer}>
+              <SignatureCanvas
+                ref={signatureRef}
+                onOK={handleOK}
+                onEmpty={handleEmpty}
+                descriptionText=""
+                clearText="Limpiar"
+                confirmText="Confirmar"
+                webStyle={`
+                  .m-signature-pad {
+                    box-shadow: none;
+                    border: 2px solid #ddd;
+                    border-radius: 8px;
+                  }
+                  .m-signature-pad--body {
+                    border: none;
+                  }
+                  .m-signature-pad--body canvas {
+                    border-radius: 8px;
+                  }
+                `}
+              />
+            </View>
+            <View style={styles.modalFirmaButtons}>
+              <Button
+                mode="outlined"
+                onPress={() => {
+                  setMostrarFirma(false);
+                  setAccionPendiente(null);
+                }}
+                style={styles.modalFirmaButton}
+              >
+                Cancelar
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleConfirm}
+                style={[styles.modalFirmaButton, { marginLeft: 10 }]}
+                buttonColor="#4CAF50"
+              >
+                Confirmar Firma
+              </Button>
+            </View>
+          </View>
+        </Modal>
+      </Portal>
+
       {/* Botones de acción */}
       <Surface style={styles.actionBar} elevation={4}>
         {/* Botón para ver documento del envío */}
@@ -599,6 +697,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 10,
+  },
+  modalFirma: {
+    backgroundColor: 'white',
+    padding: 20,
+    margin: 20,
+    borderRadius: 12,
+  },
+  modalFirmaContent: {
+    width: '100%',
+  },
+  modalFirmaTitle: {
+    textAlign: 'center',
+    marginBottom: 10,
+    fontWeight: 'bold',
+  },
+  modalFirmaSubtitle: {
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#666',
+  },
+  signatureContainer: {
+    height: 250,
+    marginVertical: 20,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  modalFirmaButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 20,
+  },
+  modalFirmaButton: {
+    minWidth: 100,
   },
 });
 
