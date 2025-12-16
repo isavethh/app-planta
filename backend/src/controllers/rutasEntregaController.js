@@ -357,7 +357,8 @@ async function guardarChecklist(req, res) {
         await client.query('BEGIN');
         
         const { 
-            ruta_parada_id, 
+            ruta_parada_id,
+            envio_id,
             tipo, 
             datos, 
             firma_base64 
@@ -370,17 +371,29 @@ async function guardarChecklist(req, res) {
             });
         }
 
-        // Insertar checklist
-        // NOTA: No usamos envio_id (se obtiene a través de ruta_parada_id -> ruta_paradas.envio_id)
+        // Obtener envio_id si no viene en el body pero tenemos ruta_parada_id
+        let finalEnvioId = envio_id;
+        if (!finalEnvioId && ruta_parada_id) {
+            const paradaResult = await client.query(`
+                SELECT envio_id FROM ruta_paradas WHERE id = $1
+            `, [ruta_parada_id]);
+            if (paradaResult.rows.length > 0) {
+                finalEnvioId = paradaResult.rows[0].envio_id;
+            }
+        }
+
+        // Insertar checklist con envio_id para facilitar búsquedas
         const result = await client.query(`
             INSERT INTO checklists (
-                ruta_parada_id, 
+                ruta_parada_id,
+                envio_id,
                 tipo, datos, firma_base64, completado
             )
-            VALUES ($1, $2, $3, $4, true)
+            VALUES ($1, $2, $3, $4, $5, true)
             RETURNING *
         `, [
             ruta_parada_id || null,
+            finalEnvioId || null,
             tipo,
             JSON.stringify(datos),
             firma_base64 || null
@@ -459,23 +472,43 @@ async function guardarChecklistConRutaId(req, res) {
 // Obtener checklist por ruta o parada
 async function obtenerChecklist(req, res) {
     try {
-        const { tipo, ruta_id, parada_id } = req.query;
+        const { tipo, ruta_id, parada_id, envio_id, envio_codigo } = req.query;
         
-        let query = 'SELECT * FROM checklists WHERE 1=1';
+        let query = `
+            SELECT 
+                c.*,
+                COALESCE(c.envio_id, rp.envio_id) as envio_id,
+                e.codigo as envio_codigo
+            FROM checklists c
+            LEFT JOIN ruta_paradas rp ON c.ruta_parada_id = rp.id
+            LEFT JOIN envios e ON COALESCE(c.envio_id, rp.envio_id) = e.id
+            WHERE 1=1
+        `;
         const params = [];
 
         if (tipo) {
             params.push(tipo);
-            query += ` AND tipo = $${params.length}`;
+            query += ` AND c.tipo = $${params.length}`;
         }
         if (ruta_id) {
             params.push(ruta_id);
-            query += ` AND ruta_entrega_id = $${params.length}`;
+            query += ` AND c.ruta_entrega_id = $${params.length}`;
         }
         if (parada_id) {
             params.push(parada_id);
-            query += ` AND ruta_parada_id = $${params.length}`;
+            query += ` AND c.ruta_parada_id = $${params.length}`;
         }
+        if (envio_id) {
+            params.push(envio_id);
+            // Buscar tanto en c.envio_id como en rp.envio_id
+            query += ` AND (c.envio_id = $${params.length} OR rp.envio_id = $${params.length})`;
+        }
+        if (envio_codigo) {
+            params.push(envio_codigo);
+            query += ` AND e.codigo = $${params.length}`;
+        }
+
+        query += ' ORDER BY c.created_at DESC';
 
         const result = await pool.query(query, params);
 
