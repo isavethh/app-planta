@@ -97,10 +97,15 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     
     // Después de capturar la firma, proceder con la aceptación
     if (accionPendiente === 'aceptar') {
-      // Usar setTimeout para asegurar que el estado se actualice
+      // Guardar la firma en una variable que persista para el callback
+      const firmaParaEnviar = firmaFormateada;
+      
+      // Usar setTimeout para asegurar que el estado se actualice completamente
       setTimeout(() => {
-        ejecutarAccion();
-      }, 100);
+        console.log('[EnvioDetalle] Ejecutando acción después de capturar firma');
+        // Usar la firma directamente en lugar del estado (que puede no estar actualizado aún)
+        ejecutarAccionConFirma(firmaParaEnviar);
+      }, 300);
     }
   };
 
@@ -109,11 +114,17 @@ export default function EnvioDetalleScreen({ route, navigation }) {
   };
 
   const handleConfirm = () => {
-    signatureRef.current?.readSignature();
+    console.log('[EnvioDetalle] handleConfirm: Leyendo firma del canvas');
+    if (signatureRef.current) {
+      signatureRef.current.readSignature();
+    } else {
+      Alert.alert('Error', 'No se pudo acceder al canvas de firma');
+    }
   };
 
   const handleEmpty = () => {
-    Alert.alert('Firma requerida', 'Por favor, firma antes de aceptar el envío');
+    Alert.alert('Firma requerida', 'Por favor, dibuja tu firma en el área antes de confirmar');
+    console.log('[EnvioDetalle] handleEmpty: No se capturó firma');
   };
 
   const confirmarAccion = (accion) => {
@@ -126,14 +137,13 @@ export default function EnvioDetalleScreen({ route, navigation }) {
     }
   };
 
-  const ejecutarAccion = async () => {
-    setDialogVisible(false);
+  const ejecutarAccionConFirma = async (firmaParaEnviar) => {
     setActionLoading(true);
 
     try {
       if (accionPendiente === 'aceptar') {
         // Verificar que haya firma antes de aceptar
-        if (!firma) {
+        if (!firmaParaEnviar) {
           Alert.alert('Firma requerida', 'Por favor, captura tu firma antes de aceptar el envío');
           setActionLoading(false);
           setMostrarFirma(true);
@@ -143,24 +153,17 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         // Aceptar envío y generar nota de venta automáticamente
         console.log('[EnvioDetalle] Aceptando envío con firma...', {
           envioId,
-          tieneFirma: !!firma,
-          firmaLength: firma ? firma.length : 0,
-          firmaType: typeof firma,
-          firmaPreview: firma ? firma.substring(0, 50) : 'N/A',
-          firmaStartsWith: firma ? firma.substring(0, 20) : 'N/A'
+          tieneFirma: !!firmaParaEnviar,
+          firmaLength: firmaParaEnviar ? firmaParaEnviar.length : 0,
+          firmaType: typeof firmaParaEnviar,
+          firmaPreview: firmaParaEnviar ? firmaParaEnviar.substring(0, 50) : 'N/A',
+          firmaStartsWith: firmaParaEnviar ? firmaParaEnviar.substring(0, 30) : 'N/A'
         });
-        
-        if (!firma) {
-          Alert.alert('Error', 'No se encontró la firma. Por favor, captura tu firma nuevamente.');
-          setActionLoading(false);
-          setMostrarFirma(true);
-          return;
-        }
         
         const result = await envioService.aceptarAsignacion(envioId, {
           nombre: 'Transportista', // TODO: obtener de userInfo
           email: 'transportista@example.com', // TODO: obtener de userInfo
-          firma_base64: firma // Enviar la firma capturada
+          firma_base64: firmaParaEnviar // Enviar la firma capturada directamente
         });
         
         console.log('[EnvioDetalle] Envío aceptado:', result);
@@ -174,6 +177,32 @@ export default function EnvioDetalleScreen({ route, navigation }) {
             navigation.goBack();
           }}]
         );
+      }
+    } catch (error) {
+      console.error('[EnvioDetalle] Error al aceptar envío:', error);
+      Alert.alert('Error', `No se pudo aceptar el envío: ${error.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const ejecutarAccion = async () => {
+    setDialogVisible(false);
+    setActionLoading(true);
+
+    try {
+      if (accionPendiente === 'aceptar') {
+        // Si hay firma en el estado, usarla; si no, mostrar modal
+        if (!firma) {
+          Alert.alert('Firma requerida', 'Por favor, captura tu firma antes de aceptar el envío');
+          setActionLoading(false);
+          setMostrarFirma(true);
+          return;
+        }
+        
+        // Usar la función con firma
+        await ejecutarAccionConFirma(firma);
+        return;
       } else if (accionPendiente === 'rechazar') {
         // Mostrar opciones de motivo de rechazo
         Alert.alert(
