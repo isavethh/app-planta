@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Alert, ScrollView, Dimensions, StatusBar, Platform, TouchableOpacity } from 'react-native';
 import { Card, Text, Button, ActivityIndicator, Appbar, Chip, Surface, Checkbox, Modal, Portal, TextInput } from 'react-native-paper';
+import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { envioService, rutasMultiService } from '../services/api';
 import socketService from '../services/socket';
@@ -49,6 +50,10 @@ export default function TrackingScreen({ route, navigation }) {
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
   const simulandoRef = useRef(false); // Ref para evitar stale closure
+  const rutaRealRef = useRef([]); // Guardar ruta para poder continuar
+  const indicePuntoActualRef = useRef(0); // Guardar índice actual
+  const duracionTotalSimulacionRef = useRef(60000); // Guardar duración total
+  const tiempoInicioSimulacionRef = useRef(null); // Tiempo de inicio para calcular tiempo transcurrido
   // Estados para modal de incidente
   const [incidenteModalVisible, setIncidenteModalVisible] = useState(false);
   const [tipoIncidente, setTipoIncidente] = useState('');
@@ -101,7 +106,19 @@ export default function TrackingScreen({ route, navigation }) {
     
     return () => {
       clearTimeout(socketTimer);
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      // NO limpiar el intervalo aquí - se limpia en el cleanup del componente cuando se desmonta
+    };
+  }, []);
+
+  // Cleanup cuando el componente se desmonta completamente (no cuando pierde el foco)
+  useEffect(() => {
+    return () => {
+      console.log('[TrackingScreen] 🔴 Componente desmontándose - limpiando intervalos');
+      // Limpiar intervalo cuando la pantalla se desmonta completamente
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       try {
         socketService.off('posicion-actualizada');
         socketService.off('simulacion-iniciada');
@@ -111,6 +128,51 @@ export default function TrackingScreen({ route, navigation }) {
       }
     };
   }, []);
+
+  // Reiniciar simulación cuando la pantalla vuelve a enfocarse
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[TrackingScreen] 🔵 Pantalla enfocada', {
+        tieneRuta: rutaRealRef.current.length > 0,
+        indiceActual: indicePuntoActualRef.current,
+        totalPuntos: rutaRealRef.current.length,
+        tieneIntervalo: !!intervalRef.current,
+        simulando: simulandoRef.current
+      });
+      
+      // Si hay una simulación en progreso (guardada en refs) y no hay intervalo activo, reiniciarla
+      if (rutaRealRef.current.length > 0 && 
+          indicePuntoActualRef.current < rutaRealRef.current.length - 1 && 
+          !intervalRef.current &&
+          simulandoRef.current) {
+        console.log('[TrackingScreen] 🔄 Reiniciando simulación desde donde se quedó...', {
+          indiceActual: indicePuntoActualRef.current,
+          totalPuntos: rutaRealRef.current.length
+        });
+        const tiempoTranscurrido = tiempoInicioSimulacionRef.current 
+          ? Date.now() - tiempoInicioSimulacionRef.current 
+          : 0;
+        const tiempoRestante = Math.max(0, duracionTotalSimulacionRef.current - tiempoTranscurrido);
+        const puntosRestantes = rutaRealRef.current.length - indicePuntoActualRef.current;
+        const nuevaDuracion = tiempoRestante > 0 
+          ? tiempoRestante 
+          : (60000 / rutaRealRef.current.length) * puntosRestantes;
+        
+        // Reiniciar animación desde el punto actual
+        // Pasar la porción de la ruta desde el índice actual
+        const puntosRestantesArray = rutaRealRef.current.slice(indicePuntoActualRef.current);
+        
+        // El índice base se toma de indicePuntoActualRef.current dentro de animarCamionRutaReal
+        animarCamionRutaReal(puntosRestantesArray, nuevaDuracion);
+      }
+      
+      return () => {
+        // NO limpiar el intervalo cuando la pantalla pierde el foco temporalmente
+        // El intervalo se mantiene corriendo, pero se pausa visualmente
+        console.log('[TrackingScreen] 🔵 Pantalla perdió el foco (temporalmente)');
+      };
+    }, [])
+  );
 
   const conectarSocket = () => {
     try {
@@ -620,7 +682,9 @@ export default function TrackingScreen({ route, navigation }) {
       }
       
       setRutaReal(puntosBackend);
+      rutaRealRef.current = puntosBackend; // Guardar en ref para poder continuar después
       setIndicePuntoActual(0);
+      indicePuntoActualRef.current = 0; // Guardar en ref
 
       // Ajustar mapa para mostrar toda la ruta
       if (mapRef.current && puntosBackend.length > 0) {
@@ -637,6 +701,8 @@ export default function TrackingScreen({ route, navigation }) {
       }
 
       const duracionMs = 60000; // 1 minuto
+      duracionTotalSimulacionRef.current = duracionMs; // Guardar duración total
+      tiempoInicioSimulacionRef.current = Date.now(); // Guardar tiempo de inicio
 
       // ENVIAR por WebSocket para sincronizar con Laravel
       try {
@@ -698,7 +764,12 @@ export default function TrackingScreen({ route, navigation }) {
     
     setSimulando(true);
     simulandoRef.current = true;
+    setRutaReal(puntos);
+    rutaRealRef.current = puntos; // Guardar en ref
     setIndicePuntoActual(0);
+    indicePuntoActualRef.current = 0; // Guardar en ref
+    duracionTotalSimulacionRef.current = duracionMs;
+    tiempoInicioSimulacionRef.current = Date.now();
     
     const intervaloMs = duracionMs / puntos.length;
     let indice = 0;
@@ -706,13 +777,16 @@ export default function TrackingScreen({ route, navigation }) {
     intervalRef.current = setInterval(() => {
       if (indice >= puntos.length - 1) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
         setSimulando(false);
         simulandoRef.current = false;
         setIndicePuntoActual(puntos.length - 1);
+        indicePuntoActualRef.current = puntos.length - 1;
         return;
       }
       
       setIndicePuntoActual(indice);
+      indicePuntoActualRef.current = indice; // Actualizar ref
       indice++;
     }, intervaloMs);
   };
@@ -726,20 +800,31 @@ export default function TrackingScreen({ route, navigation }) {
     }
 
     console.log(`[TrackingScreen] Iniciando animación con ${puntos.length} puntos de ruta real`);
+    
+    // Si estamos continuando desde un punto específico, ajustar el índice base
+    const indiceBase = indicePuntoActualRef.current;
     let indice = 0;
     
     // Calcular intervalo para que dure exactamente duracionMs
     const intervaloMs = duracionMs / puntos.length;
     console.log(`[TrackingScreen] Intervalo: ${intervaloMs.toFixed(0)}ms por punto`);
 
+    // Actualizar tiempo de inicio si es una continuación
+    if (!tiempoInicioSimulacionRef.current) {
+      tiempoInicioSimulacionRef.current = Date.now();
+    }
+
     intervalRef.current = setInterval(() => {
       try {
         if (indice >= puntos.length - 1) {
           console.log('[TrackingScreen] Animación completada');
           clearInterval(intervalRef.current);
+          intervalRef.current = null;
           setSimulando(false);
           simulandoRef.current = false;
-          setIndicePuntoActual(puntos.length - 1);
+          const indiceFinal = indiceBase + indice;
+          setIndicePuntoActual(indiceFinal);
+          indicePuntoActualRef.current = indiceFinal;
           
           // Notificar por socket que terminó (con try-catch)
           try {
@@ -753,12 +838,17 @@ export default function TrackingScreen({ route, navigation }) {
           return;
         }
 
-        setIndicePuntoActual(indice);
+        const indiceReal = indiceBase + indice;
+        setIndicePuntoActual(indiceReal);
+        indicePuntoActualRef.current = indiceReal; // Actualizar ref en cada iteración
         
         // Enviar posición por WebSocket para sincronizar con Laravel y la web
         const punto = puntos[indice];
         if (punto && punto.latitude && punto.longitude) {
-          const progreso = indice / puntos.length;
+          // Calcular progreso basado en el índice real dentro de toda la ruta
+          const progreso = rutaRealRef.current.length > 0 
+            ? indiceReal / rutaRealRef.current.length 
+            : indice / puntos.length;
           try {
             // Asegurar que el socket esté conectado antes de enviar
             if (!socketService.isConnected()) {
@@ -794,6 +884,7 @@ export default function TrackingScreen({ route, navigation }) {
       } catch (error) {
         console.error('[TrackingScreen] Error en animación:', error);
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
         setSimulando(false);
         simulandoRef.current = false;
       }
@@ -923,6 +1014,27 @@ export default function TrackingScreen({ route, navigation }) {
                   navigation.goBack();
                 } else {
                   cargarDatos();
+                  
+                  // Reiniciar simulación si estaba corriendo
+                  if (rutaRealRef.current.length > 0 && 
+                      indicePuntoActualRef.current < rutaRealRef.current.length - 1 && 
+                      simulandoRef.current &&
+                      !intervalRef.current) {
+                    console.log('[TrackingScreen] 🔄 Reanudando simulación después de reportar incidente...');
+                    const tiempoTranscurrido = tiempoInicioSimulacionRef.current 
+                      ? Date.now() - tiempoInicioSimulacionRef.current 
+                      : 0;
+                    const tiempoRestante = Math.max(0, duracionTotalSimulacionRef.current - tiempoTranscurrido);
+                    const puntosRestantes = rutaRealRef.current.length - indicePuntoActualRef.current;
+                    const nuevaDuracion = tiempoRestante > 0 
+                      ? tiempoRestante 
+                      : (60000 / rutaRealRef.current.length) * puntosRestantes;
+                    
+                    animarCamionRutaReal(
+                      rutaRealRef.current.slice(indicePuntoActualRef.current),
+                      nuevaDuracion
+                    );
+                  }
                 }
               }
             }
@@ -1200,13 +1312,12 @@ export default function TrackingScreen({ route, navigation }) {
                 mode="outlined"
                 icon="alert-circle"
                 onPress={() => {
-                  // Detener la simulación cuando se abre el modal
+                  // Pausar la simulación cuando se abre el modal (guardar estado pero no limpiar completamente)
                   if (intervalRef.current) {
                     clearInterval(intervalRef.current);
                     intervalRef.current = null;
                   }
-                  setSimulando(false);
-                  simulandoRef.current = false;
+                  // NO cambiar simulandoRef.current ni setSimulando(false) para poder reanudar después
                   setIncidenteModalVisible(true);
                 }}
                 style={[styles.button, styles.incidenteButton]}
@@ -1488,6 +1599,27 @@ export default function TrackingScreen({ route, navigation }) {
               setDescripcionIncidente('');
               setAccionIncidente('continuar');
               setFotoIncidente(null);
+              
+              // Reiniciar simulación si estaba corriendo
+              if (rutaRealRef.current.length > 0 && 
+                  indicePuntoActualRef.current < rutaRealRef.current.length - 1 && 
+                  simulandoRef.current &&
+                  !intervalRef.current) {
+                console.log('[TrackingScreen] 🔄 Reanudando simulación después de cerrar modal...');
+                const tiempoTranscurrido = tiempoInicioSimulacionRef.current 
+                  ? Date.now() - tiempoInicioSimulacionRef.current 
+                  : 0;
+                const tiempoRestante = Math.max(0, duracionTotalSimulacionRef.current - tiempoTranscurrido);
+                const puntosRestantes = rutaRealRef.current.length - indicePuntoActualRef.current;
+                const nuevaDuracion = tiempoRestante > 0 
+                  ? tiempoRestante 
+                  : (60000 / rutaRealRef.current.length) * puntosRestantes;
+                
+                animarCamionRutaReal(
+                  rutaRealRef.current.slice(indicePuntoActualRef.current),
+                  nuevaDuracion
+                );
+              }
             }}
             contentContainerStyle={styles.incidenteModalContainer}
             dismissable={true}
@@ -1573,6 +1705,27 @@ export default function TrackingScreen({ route, navigation }) {
                       setDescripcionIncidente('');
                       setAccionIncidente('continuar');
                       setFotoIncidente(null);
+                      
+                      // Reiniciar simulación si estaba corriendo
+                      if (rutaRealRef.current.length > 0 && 
+                          indicePuntoActualRef.current < rutaRealRef.current.length - 1 && 
+                          simulandoRef.current &&
+                          !intervalRef.current) {
+                        console.log('[TrackingScreen] 🔄 Reanudando simulación después de cancelar modal...');
+                        const tiempoTranscurrido = tiempoInicioSimulacionRef.current 
+                          ? Date.now() - tiempoInicioSimulacionRef.current 
+                          : 0;
+                        const tiempoRestante = Math.max(0, duracionTotalSimulacionRef.current - tiempoTranscurrido);
+                        const puntosRestantes = rutaRealRef.current.length - indicePuntoActualRef.current;
+                        const nuevaDuracion = tiempoRestante > 0 
+                          ? tiempoRestante 
+                          : (60000 / rutaRealRef.current.length) * puntosRestantes;
+                        
+                        animarCamionRutaReal(
+                          rutaRealRef.current.slice(indicePuntoActualRef.current),
+                          nuevaDuracion
+                        );
+                      }
                     }}
                     style={styles.incidenteCancelarBtn}
                     contentStyle={styles.incidenteButtonContent}
