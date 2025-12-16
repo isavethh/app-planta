@@ -372,15 +372,15 @@ export default function QRViewScreen({ route, navigation }) {
             <Card.Content>
               <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                 <DataTable style={styles.dataTable}>
-                  <DataTable.Header>
+                <DataTable.Header>
                     <DataTable.Title style={styles.tableCellProducto}>Producto</DataTable.Title>
                     <DataTable.Title numeric style={styles.tableCellNumeric}>Cant.</DataTable.Title>
                     <DataTable.Title numeric style={styles.tableCellNumeric}>Peso (kg)</DataTable.Title>
                     <DataTable.Title numeric style={styles.tableCellNumeric}>Precio Unit.</DataTable.Title>
-                  </DataTable.Header>
+                </DataTable.Header>
 
-                  {envio.productos.map((producto, index) => (
-                    <DataTable.Row key={index}>
+                {envio.productos.map((producto, index) => (
+                  <DataTable.Row key={index}>
                       <DataTable.Cell style={styles.tableCellProducto} textStyle={styles.tableCellText}>
                         {producto.producto_nombre || 'Producto'}
                       </DataTable.Cell>
@@ -393,9 +393,9 @@ export default function QRViewScreen({ route, navigation }) {
                       <DataTable.Cell numeric style={styles.tableCellNumeric} textStyle={styles.tableCellText}>
                         Bs {parseFloat(producto.total_precio || producto.precio_unitario || 0).toFixed(2)}
                       </DataTable.Cell>
-                    </DataTable.Row>
-                  ))}
-                </DataTable>
+                  </DataTable.Row>
+                ))}
+              </DataTable>
               </ScrollView>
 
               <Divider style={styles.totalDivider} />
