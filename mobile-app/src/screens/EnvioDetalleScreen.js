@@ -68,12 +68,39 @@ export default function EnvioDetalleScreen({ route, navigation }) {
 
   // Manejar firma
   const handleOK = (signature) => {
-    setFirma(signature);
+    console.log('[EnvioDetalle] Firma capturada en handleOK:', {
+      tieneSignature: !!signature,
+      signatureType: typeof signature,
+      signatureLength: signature ? signature.length : 0,
+      signaturePreview: signature ? signature.substring(0, 50) : 'N/A'
+    });
+    
+    if (!signature) {
+      Alert.alert('Error', 'No se pudo capturar la firma. Por favor, intenta de nuevo.');
+      return;
+    }
+    
+    // Asegurar que la firma tenga el formato correcto (base64)
+    let firmaFormateada = signature;
+    if (!signature.startsWith('data:image')) {
+      // Si no tiene el prefijo, agregarlo
+      firmaFormateada = 'data:image/png;base64,' + signature;
+    }
+    
+    setFirma(firmaFormateada);
     setMostrarFirma(false);
-    console.log('[EnvioDetalle] Firma capturada');
+    console.log('[EnvioDetalle] Firma guardada en estado:', {
+      tieneFirma: !!firmaFormateada,
+      firmaLength: firmaFormateada.length,
+      tienePrefijo: firmaFormateada.startsWith('data:image')
+    });
+    
     // Después de capturar la firma, proceder con la aceptación
     if (accionPendiente === 'aceptar') {
-      ejecutarAccion();
+      // Usar setTimeout para asegurar que el estado se actualice
+      setTimeout(() => {
+        ejecutarAccion();
+      }, 100);
     }
   };
 
@@ -117,8 +144,18 @@ export default function EnvioDetalleScreen({ route, navigation }) {
         console.log('[EnvioDetalle] Aceptando envío con firma...', {
           envioId,
           tieneFirma: !!firma,
-          firmaLength: firma ? firma.length : 0
+          firmaLength: firma ? firma.length : 0,
+          firmaType: typeof firma,
+          firmaPreview: firma ? firma.substring(0, 50) : 'N/A',
+          firmaStartsWith: firma ? firma.substring(0, 20) : 'N/A'
         });
+        
+        if (!firma) {
+          Alert.alert('Error', 'No se encontró la firma. Por favor, captura tu firma nuevamente.');
+          setActionLoading(false);
+          setMostrarFirma(true);
+          return;
+        }
         
         const result = await envioService.aceptarAsignacion(envioId, {
           nombre: 'Transportista', // TODO: obtener de userInfo

@@ -317,11 +317,25 @@ export const envioService = {
     // Incluir firma_base64 si está presente
     if (transportistaData?.firma_base64) {
       payload.firma_base64 = transportistaData.firma_base64;
-      console.log('[api.js] Enviando firma base64 con aceptación:', {
+      console.log('[api.js] ✅ Enviando firma base64 con aceptación:', {
         envio_id: id,
-        firma_length: transportistaData.firma_base64.length
+        firma_length: transportistaData.firma_base64.length,
+        firma_type: typeof transportistaData.firma_base64,
+        firma_starts_with: transportistaData.firma_base64.substring(0, 30),
+        tiene_data_image: transportistaData.firma_base64.startsWith('data:image')
+      });
+    } else {
+      console.warn('[api.js] ⚠️ NO se encontró firma_base64 en transportistaData:', {
+        envio_id: id,
+        transportistaData_keys: Object.keys(transportistaData || {})
       });
     }
+    
+    console.log('[api.js] Payload completo a enviar:', {
+      envio_id: id,
+      payload_keys: Object.keys(payload),
+      tiene_firma: 'firma_base64' in payload
+    });
     
     const response = await api.post(`/envios/${id}/aceptar`, payload);
     return response.data;
