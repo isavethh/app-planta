@@ -21,7 +21,8 @@ router.get('/:id/envios', async (req, res) => {
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
-      LEFT JOIN users u ON ea.transportista_id = u.id
+      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       WHERE e.almacen_destino_id = $1
       ORDER BY e.created_at DESC
     `, [id]);
@@ -59,7 +60,8 @@ router.get('/:id/notas-venta', async (req, res) => {
       INNER JOIN envios e ON nv.envio_id = e.id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
-      LEFT JOIN users u ON ea.transportista_id = u.id
+      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       WHERE e.almacen_destino_id = $1
       ORDER BY nv.created_at DESC
     `, [id]);
@@ -114,7 +116,8 @@ router.get('/nota-venta/:id', async (req, res) => {
       INNER JOIN envios e ON nv.envio_id = e.id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
-      LEFT JOIN users u ON ea.transportista_id = u.id
+      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       WHERE nv.id = $1
     `, [id]);
 

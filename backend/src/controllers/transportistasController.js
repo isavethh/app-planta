@@ -149,8 +149,9 @@ const getEnviosAsignados = async (req, res) => {
              a.longitud
       FROM envios e
       LEFT JOIN envio_asignaciones ae ON e.id = ae.envio_id
+      LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
-      WHERE ae.transportista_id = $1
+      WHERE v.transportista_id = $1
       ORDER BY e.fecha_estimada_entrega DESC
     `, [id]);
 

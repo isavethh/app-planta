@@ -47,7 +47,8 @@ const generarDocumentoHTML = async (req, res) => {
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
-      LEFT JOIN users u ON ea.transportista_id = u.id
+      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       WHERE e.id = $1
     `, [id]);
 

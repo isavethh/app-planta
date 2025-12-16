@@ -7,7 +7,7 @@ const getAll = async (req, res) => {
       SELECT e.*, 
              a.nombre as almacen_nombre,
              a.direccion_completa,
-             ae.transportista_id,
+             v.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
              u.name as transportista_nombre,
@@ -16,8 +16,8 @@ const getAll = async (req, res) => {
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN envio_asignaciones ae ON e.id = ae.envio_id
-      LEFT JOIN users u ON ae.transportista_id = u.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       ORDER BY e.created_at DESC
     `);
 
@@ -45,7 +45,7 @@ const getById = async (req, res) => {
              a.longitud as destino_longitud,
              -17.7833 as origen_latitud,
              -63.1821 as origen_longitud,
-             ae.transportista_id,
+             v.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
              ae.fecha_aceptacion,
@@ -56,8 +56,8 @@ const getById = async (req, res) => {
       FROM envios e
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN envio_asignaciones ae ON e.id = ae.envio_id
-      LEFT JOIN users u ON ae.transportista_id = u.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       WHERE e.id = $1
     `, [id]);
 
@@ -409,12 +409,13 @@ const aceptarAsignacion = async (req, res) => {
     // Verificar que el envío existe y obtener su estado con info del transportista
     const envioCheck = await pool.query(`
       SELECT e.estado, 
-             ea.transportista_id,
+             v.transportista_id,
              u.name as transportista_nombre_db,
              u.email as transportista_email_db
       FROM envios e
       LEFT JOIN envio_asignaciones ea ON e.id = ea.envio_id
-      LEFT JOIN users u ON ea.transportista_id = u.id
+      LEFT JOIN vehiculos v ON ea.vehiculo_id = v.id
+      LEFT JOIN users u ON v.transportista_id = u.id
       WHERE e.id = $1
     `, [id]);
     
@@ -424,6 +425,14 @@ const aceptarAsignacion = async (req, res) => {
 
     const envioData = envioCheck.rows[0];
     const estadoActual = envioData.estado;
+    
+    // Verificar que el transportista existe (puede ser null si no hay vehículo asignado)
+    if (!envioData.transportista_id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'El envío no tiene un vehículo asignado con transportista' 
+      });
+    }
 
     // Usar datos enviados desde app o datos de BD
     const nombreFirma = transportista_nombre || envioData.transportista_nombre_db || 'Transportista';
@@ -566,7 +575,7 @@ const getByTransportista = async (req, res) => {
              -17.7833 as origen_latitud,
              -63.1821 as origen_longitud,
              'Planta Principal' as origen_nombre,
-             ae.transportista_id,
+             v.transportista_id,
              ae.vehiculo_id,
              ae.fecha_asignacion,
              v.placa as vehiculo_placa,
@@ -579,7 +588,7 @@ const getByTransportista = async (req, res) => {
       INNER JOIN envio_asignaciones ae ON e.id = ae.envio_id
       LEFT JOIN almacenes a ON e.almacen_destino_id = a.id
       LEFT JOIN vehiculos v ON ae.vehiculo_id = v.id
-      WHERE ae.transportista_id = $1
+      WHERE v.transportista_id = $1
         AND e.estado IN ('pendiente', 'asignado', 'aceptado', 'en_transito', 'entregado')
         AND e.ruta_entrega_id IS NULL
       ORDER BY e.created_at DESC
