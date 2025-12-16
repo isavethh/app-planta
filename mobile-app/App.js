@@ -34,8 +34,8 @@ import AlmacenNotasVentaScreen from './src/screens/AlmacenNotasVentaScreen';
 import AlmacenEstadisticasScreen from './src/screens/AlmacenEstadisticasScreen';
 import AlmacenIAScreen from './src/screens/AlmacenIAScreen';
 import ReportarIncidenteScreen from './src/screens/ReportarIncidenteScreen';
+import MisIncidentesScreen from './src/screens/MisIncidentesScreen';
 // Pantallas de rutas multi-entrega
-import MisRutasScreen from './src/screens/MisRutasScreen';
 import RutaMultiEntregaScreen from './src/screens/RutaMultiEntregaScreen';
 import ChecklistSalidaScreen from './src/screens/ChecklistSalidaScreen';
 import ChecklistEntregaScreen from './src/screens/ChecklistEntregaScreen';
@@ -75,8 +75,8 @@ function TransportistaTabs() {
 
             if (route.name === 'MisEnvios') {
               iconName = 'truck-delivery';
-            } else if (route.name === 'MisRutas') {
-              iconName = 'map-marker-path';
+            } else if (route.name === 'MisIncidentes') {
+              iconName = 'shield-alert';
             } else if (route.name === 'Historial') {
               iconName = 'history';
             } else if (route.name === 'Perfil') {
@@ -95,9 +95,9 @@ function TransportistaTabs() {
         options={{ title: 'Mis Envíos', headerShown: false }}
       />
       <Tab.Screen 
-        name="MisRutas" 
-        component={MisRutasScreen}
-        options={{ title: 'Mis Rutas', headerShown: false }}
+        name="MisIncidentes" 
+        component={MisIncidentesScreen}
+        options={{ title: 'Mis Incidentes', headerShown: false }}
       />
       <Tab.Screen 
         name="Historial" 
