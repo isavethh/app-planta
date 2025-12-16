@@ -381,6 +381,14 @@ async function guardarChecklist(req, res) {
                 finalEnvioId = paradaResult.rows[0].envio_id;
             }
         }
+        
+        // Log para debugging
+        console.log('📝 [guardarChecklist] Guardando checklist:', {
+            envio_id: finalEnvioId,
+            ruta_parada_id: ruta_parada_id || null,
+            tipo: tipo,
+            tiene_firma: !!firma_base64
+        });
 
         // Insertar checklist con envio_id para facilitar búsquedas
         const result = await client.query(`
