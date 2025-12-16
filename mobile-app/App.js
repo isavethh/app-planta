@@ -29,10 +29,6 @@ import QRViewScreen from './src/screens/QRViewScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
 import MapaEnvioScreen from './src/screens/MapaEnvioScreen';
 import DocumentoEnvioScreen from './src/screens/DocumentoEnvioScreen';
-import AlmacenEnviosScreen from './src/screens/AlmacenEnviosScreen';
-import AlmacenNotasVentaScreen from './src/screens/AlmacenNotasVentaScreen';
-import AlmacenEstadisticasScreen from './src/screens/AlmacenEstadisticasScreen';
-import AlmacenIAScreen from './src/screens/AlmacenIAScreen';
 import ReportarIncidenteScreen from './src/screens/ReportarIncidenteScreen';
 import MisIncidentesScreen from './src/screens/MisIncidentesScreen';
 // Pantallas de rutas multi-entrega
@@ -123,73 +119,6 @@ function TransportistaTabs() {
   }
 }
 
-// Tabs del almacén
-function AlmacenTabs() {
-  console.log('📱 [AlmacenTabs] Renderizando...');
-  
-  try {
-    return (
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName;
-
-            if (route.name === 'Envios') {
-              iconName = 'package-variant';
-            } else if (route.name === 'NotasVenta') {
-              iconName = 'receipt';
-            } else if (route.name === 'Estadisticas') {
-              iconName = 'chart-box';
-            } else if (route.name === 'IA') {
-              iconName = 'chart-timeline-variant';
-            } else if (route.name === 'Perfil') {
-              iconName = 'account';
-            }
-
-            return <Icon name={iconName} size={size} color={color} />;
-          },
-          tabBarActiveTintColor: '#4CAF50',
-          tabBarInactiveTintColor: 'gray',
-        })}
-      >
-      <Tab.Screen 
-        name="Envios" 
-        component={AlmacenEnviosScreen} 
-        options={{ title: 'Envíos', headerShown: true, headerTitle: '📦 Mis Envíos' }}
-      />
-      <Tab.Screen 
-        name="NotasVenta" 
-        component={AlmacenNotasVentaScreen}
-        options={{ title: 'Notas', headerShown: true, headerTitle: '📄 Notas de Venta' }}
-      />
-      <Tab.Screen 
-        name="Estadisticas" 
-        component={AlmacenEstadisticasScreen}
-        options={{ title: 'Estadísticas', headerShown: true, headerTitle: '📊 Estadísticas' }}
-      />
-      <Tab.Screen 
-        name="IA" 
-        component={AlmacenIAScreen}
-        options={{ title: 'IA', headerShown: true, headerTitle: '🧠 Inteligencia Artificial' }}
-      />
-      <Tab.Screen 
-        name="Perfil" 
-        component={PerfilScreen}
-        options={{ title: 'Perfil' }}
-      />
-    </Tab.Navigator>
-    );
-  } catch (error) {
-    console.error('💥 [AlmacenTabs] ERROR CRÍTICO:', error);
-    console.error('💥 [AlmacenTabs] Stack:', error.stack);
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <Text style={{ fontSize: 20, color: 'red', marginBottom: 10 }}>Error al cargar tabs</Text>
-        <Text style={{ color: '#666' }}>{error.message}</Text>
-      </View>
-    );
-  }
-}
 
 export default function App() {
   const [userToken, setUserToken] = useState(null);
@@ -343,14 +272,10 @@ export default function App() {
               />
             ) : (
               <>
-                {/* Renderizar tabs según el tipo de usuario */}
+                {/* Solo transportistas - siempre usar TransportistaTabs */}
                 <Stack.Screen 
                   name="Main" 
-                  component={
-                    userInfo?.tipo === 'almacen' || userInfo?.rol_nombre === 'almacen'
-                      ? AlmacenTabs 
-                      : TransportistaTabs
-                  }
+                  component={TransportistaTabs}
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen 
